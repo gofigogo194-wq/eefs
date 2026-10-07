@@ -27,6 +27,7 @@ def run_readonly_cycle(
     exploration_queries: list[str],
     scout_policy: ScoutPolicy | None = None,
     discovery_policy: DiscoveryPolicy | None = None,
+    observed_at: str | None = None,
 ) -> ReadOnlyCycleResult:
     decision = choose_queries(known_topics, exploration_queries, scout_policy)
     journal.append("SCOUT_DECISION", asdict(decision))
@@ -48,7 +49,12 @@ def run_readonly_cycle(
             for row in rows
         )
     selected = select_candidates(discovered, discovery_policy)
-    observations, _ = enrich_statistics(selected, transport, journal)
+    observations, _ = enrich_statistics(
+        selected,
+        transport,
+        journal,
+        observed_at=observed_at,
+    )
     inserted = sum(1 for observation in observations if snapshots.append(observation))
     result = ReadOnlyCycleResult(
         queries=decision.queries,
