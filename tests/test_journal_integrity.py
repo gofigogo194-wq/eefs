@@ -152,3 +152,25 @@ def test_state_compare_and_append_rejects_stale_expected_state(tmp_path):
             state_payload("x", "IDEA", "BLOCKED"),
             expected_from_state="IDEA",
         )
+
+
+def test_hash_valid_but_non_object_event_payload_fails_integrity(tmp_path):
+    path = tmp_path / "journal.db"
+    journal = DecisionJournal(path)
+    journal.append("A", {"x": 1})
+
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER events_append_only_update")
+        db.execute("DROP TRIGGER events_append_only_delete")
+        db.execute("DROP TRIGGER events_require_hash_insert")
+        rows = journal._rows(db)
+        journal._append_verified(db, rows, "FORGED", {"temporary": True})
+        forged_id = db.execute("SELECT MAX(id) FROM events").fetchone()[0]
+        db.execute(
+            "UPDATE events SET payload_json='[]' WHERE id=?",
+            (forged_id,),
+        )
+
+    assert journal.verify_chain() is False
+    with pytest.raises(RuntimeError, match="hash chain"):
+        journal.read_all()
