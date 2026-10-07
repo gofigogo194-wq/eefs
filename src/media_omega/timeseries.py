@@ -15,7 +15,7 @@ class MomentumSignal:
     previous_velocity: float
     acceleration_ratio: float
     sustained_growth: bool
-    formula_version: str = "momentum.v1"
+    formula_version: str = "momentum.v2"
 
 
 def _time(value: str) -> datetime:
