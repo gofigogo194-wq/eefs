@@ -90,3 +90,33 @@ def test_report_cli_refuses_to_infer_from_two_snapshots(tmp_path, capsys):
     assert payload["ready_count"] == 0
     assert payload["insufficient_count"] == 1
     assert payload["opportunities"] == []
+
+
+def test_intelligence_cli_with_short_history_avoids_live_creator_fetch(tmp_path, capsys, monkeypatch):
+    from media_omega import cli
+    from media_omega.observations import ContentObservation
+    from media_omega.snapshots import SnapshotStore
+
+    store = SnapshotStore(tmp_path / "snapshots.db")
+    for hour, views in [(1, 100), (2, 200)]:
+        store.append(ContentObservation(
+            "youtube", "abc", "creator",
+            "2026-10-07T00:00:00+00:00",
+            f"2026-10-07T{hour:02d}:00:00+00:00",
+            views, 1, f"api://youtube/abc/{hour}",
+        ))
+
+    class ForbiddenTransport:
+        def channel_recent_video_ids(self, creator_id):
+            raise AssertionError("creator API must not be called before snapshot gate")
+        def video_statistics(self, ids):
+            raise AssertionError("statistics API must not be called before snapshot gate")
+
+    monkeypatch.setattr(cli, "YouTubeHTTPTransport", lambda: ForbiddenTransport())
+    code = cli.main(["intelligence", "--state-dir", str(tmp_path)])
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "read-only"
+    assert payload["ready_count"] == 0
+    assert payload["insufficient_snapshot_history_count"] == 1
+    assert payload["signals"] == []
