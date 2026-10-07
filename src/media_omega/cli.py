@@ -92,6 +92,7 @@ def _report(state_dir: str) -> int:
         "required_snapshots": report.required_snapshots,
         "ready_count": len(report.ready),
         "insufficient_count": len(report.insufficient_history),
+        "unreliable_interval_count": len(report.unreliable_interval),
         "opportunities": [
             {
                 "content_id": item.content_id,
@@ -118,6 +119,7 @@ def _intelligence_report(state_dir: str) -> int:
         "ready_count": len(report.ready),
         "insufficient_snapshot_history_count": len(report.insufficient_snapshot_history),
         "insufficient_creator_history_count": len(report.insufficient_creator_history),
+        "unreliable_interval_count": len(report.unreliable_interval),
         "signals": [
             {
                 "content_id": x.content_id,
