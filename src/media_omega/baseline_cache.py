@@ -67,7 +67,7 @@ class CreatorBaselineCache:
             )
             if sample is not None:
                 samples.append(sample)
-                source_refs.append(f"api://youtube/videos/{content_id}")
+                source_refs.append(f"api://youtube/videos/{content_id}@{observed_at}")
                 source_observed_at.append(observed_at)
 
         excluded = target_content_id is not None and target_content_id in raw_ids
