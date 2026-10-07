@@ -1,9 +1,10 @@
 from media_omega.baseline_cache import CreatorBaselineCache
+from media_omega.cohort import PeerCohortPolicy
 from media_omega.intelligence_pipeline import evaluate_content, rank_signals
 from media_omega.observations import ContentObservation
 
 
-def obs(cid, creator, hour, views):
+def obs(cid, creator, hour, views, query="", content_format="unknown"):
     return ContentObservation(
         "youtube",
         cid,
@@ -13,6 +14,8 @@ def obs(cid, creator, hour, views):
         views,
         1,
         f"api://youtube/{cid}/{hour}",
+        query,
+        content_format,
     )
 
 
@@ -52,7 +55,7 @@ def test_pipeline_combines_age_normalized_creator_breakout_and_momentum():
     assert signal.relative_creator_performance == 5.0
     assert signal.acceleration_ratio == 3.0
     assert signal.score > 0
-    assert signal.version == "intelligence_pipeline.v3"
+    assert signal.version == "intelligence_pipeline.v4"
 
 
 def test_pipeline_fails_closed_without_creator_history():
@@ -127,3 +130,27 @@ def test_bad_temporal_history_fails_before_creator_api_work():
         raise AssertionError("unreliable temporal evidence must fail closed")
     assert transport.history_calls == 0
     assert transport.details_calls == 0
+
+
+def test_pipeline_reports_comparable_peer_cohort_without_changing_score_formula():
+    cache = CreatorBaselineCache(Transport())
+    history = [
+        obs("target", "c", 1, 1000, "ambient sleep", "long-form"),
+        obs("target", "c", 2, 2000, "ambient sleep", "long-form"),
+        obs("target", "c", 3, 5000, "ambient sleep", "long-form"),
+    ]
+    peers = [
+        obs("p1", "x", 2, 1000, "ambient sleep", "long-form"),
+        obs("p2", "y", 3, 1200, "ambient sleep", "long-form"),
+        obs("p3", "z", 4, 900, "ambient sleep", "long-form"),
+    ]
+    signal = evaluate_content(
+        history,
+        cache,
+        peers,
+        PeerCohortPolicy(max_age_ratio=2.0, minimum_peers=3),
+    )
+    assert signal.status == "READY"
+    assert signal.peer_cohort_status == "READY"
+    assert signal.peer_count == 3
+    assert signal.version == "intelligence_pipeline.v4"
