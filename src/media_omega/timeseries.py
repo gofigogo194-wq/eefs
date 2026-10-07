@@ -28,6 +28,8 @@ def _time(value: str) -> datetime:
 def momentum(history: list[ContentObservation], minimum_interval_seconds: float = 60.0) -> MomentumSignal:
     if len(history) < 3:
         raise ValueError("at least 3 observations are required for momentum")
+    if minimum_interval_seconds <= 0:
+        raise ValueError("minimum_interval_seconds must be positive")
     ordered = sorted(history, key=lambda x: _time(x.observed_at))
     content_ids = {x.content_id for x in ordered}
     platforms = {x.platform for x in ordered}
@@ -41,6 +43,8 @@ def momentum(history: list[ContentObservation], minimum_interval_seconds: float 
         dt_hours = (_time(right.observed_at) - _time(left.observed_at)).total_seconds() / 3600.0
         if dt_hours <= 0:
             raise ValueError("observation timestamps must be unique and increasing")
+        if dt_hours * 3600.0 < minimum_interval_seconds:
+            raise ValueError("observation interval is too short for reliable momentum")
         delta_views = right.views - left.views
         if delta_views < 0:
             raise ValueError("cumulative views cannot decrease")
