@@ -54,6 +54,6 @@ def test_near_zero_previous_velocity_cannot_explode_score():
         [obs("edge", "c", 1, 1000), obs("edge", "c", 2, 1000), obs("edge", "c", 3, 1001)],
         cache,
     )
-    assert signal.acceleration_ratio > 1000000
-    assert signal.score < 20
+    assert signal.acceleration_ratio == 1.0
+    assert signal.score < 1.0
     assert signal.version == "intelligence_pipeline.v2"
