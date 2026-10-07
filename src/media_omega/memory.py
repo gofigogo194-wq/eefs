@@ -34,7 +34,21 @@ def _hash_event(
 def _verify_rows(rows: list[tuple]) -> bool:
     previous = _GENESIS_HASH
     for _, created_at, event_type, payload_json, prev_hash, event_hash in rows:
-        if prev_hash is None or event_hash is None:
+        if (
+            not isinstance(created_at, str)
+            or not created_at.strip()
+            or not isinstance(event_type, str)
+            or not event_type.strip()
+            or not isinstance(payload_json, str)
+            or not isinstance(prev_hash, str)
+            or not isinstance(event_hash, str)
+        ):
+            return False
+        try:
+            decoded = json.loads(payload_json)
+        except (TypeError, json.JSONDecodeError):
+            return False
+        if not isinstance(decoded, dict):
             return False
         if prev_hash != previous:
             return False
@@ -152,8 +166,10 @@ class DecisionJournal:
         return int(cur.lastrowid)
 
     def append(self, event_type: str, payload: dict[str, Any]) -> int:
-        if not event_type.strip():
+        if not isinstance(event_type, str) or not event_type.strip():
             raise ValueError("event_type is required")
+        if not isinstance(payload, dict):
+            raise TypeError("journal payload must be a dict")
         if event_type == "STATE_TRANSITION":
             raise ValueError("STATE_TRANSITION requires append_state_transition")
         with self._connect() as db:
@@ -168,6 +184,8 @@ class DecisionJournal:
         payload: dict[str, Any],
         expected_from_state: str | None,
     ) -> int:
+        if not isinstance(payload, dict):
+            raise TypeError("state transition payload must be a dict")
         entity_id = payload.get("entity_id")
         if not isinstance(entity_id, str) or not entity_id.strip():
             raise ValueError("state transition entity_id is required")
