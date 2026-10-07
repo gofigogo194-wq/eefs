@@ -57,3 +57,18 @@ def test_api_key_is_sent_in_header_not_url(monkeypatch):
     assert "key=" not in captured["url"]
     assert captured["headers"]["X-goog-api-key"] == "secret-test-value"
     assert captured["method"] == "GET"
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        YouTubeReadOnlyConfig(api_key_env=""),
+        YouTubeReadOnlyConfig(timeout_seconds=0),
+        YouTubeReadOnlyConfig(timeout_seconds=float("inf")),
+        YouTubeReadOnlyConfig(max_results=0),
+        YouTubeReadOnlyConfig(max_results=51),
+    ],
+)
+def test_transport_rejects_invalid_configuration_before_io(config):
+    with pytest.raises(ValueError):
+        YouTubeHTTPTransport(config)
