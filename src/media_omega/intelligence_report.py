@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 
 from .baseline_cache import CreatorBaselineCache
+from .cohort import PeerCohortPolicy
 from .intelligence_pipeline import IntelligenceSignal, evaluate_content, rank_signals
 from .memory import DecisionJournal
 from .snapshots import SnapshotStore
@@ -23,18 +24,25 @@ def analyze_intelligence(
     transport,
 ) -> IntelligenceReport:
     cache = CreatorBaselineCache(transport)
+    diagnostic_cohort_policy = PeerCohortPolicy(max_age_ratio=2.0, minimum_peers=3)
+    latest_observations = store.latest("youtube")
     ready: list[IntelligenceSignal] = []
     short: list[str] = []
     no_creator_history: list[str] = []
     unreliable: list[str] = []
 
-    for latest in store.latest("youtube"):
+    for latest in latest_observations:
         history = store.history("youtube", latest.content_id)
         if len(history) < 3:
             short.append(latest.content_id)
             continue
         try:
-            signal = evaluate_content(history, cache)
+            signal = evaluate_content(
+                history,
+                cache,
+                latest_observations,
+                diagnostic_cohort_policy,
+            )
         except ValueError as exc:
             if "interval is too short" in str(exc):
                 unreliable.append(latest.content_id)
