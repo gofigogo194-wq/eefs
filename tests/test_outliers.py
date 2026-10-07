@@ -60,3 +60,16 @@ def test_evidence_hash_is_stable_and_journaled(tmp_path):
     event = journal.read_all()[0]
     assert event["event_type"] == "EVIDENCE"
     assert len(event["payload"]["sha256"]) == 64
+
+
+def test_outlier_rejects_when_no_same_platform_peer_evidence_exists():
+    candidate = obs("candidate", 5000)
+    with pytest.raises(ValueError, match="peer baseline"):
+        detect_outlier(candidate, [obs("ig", 1000, platform="instagram")])
+
+
+def test_zero_velocity_peer_cohort_cannot_create_exploding_ratio():
+    candidate = obs("candidate", 5000)
+    peers = [obs("p1", 0), obs("p2", 0), obs("p3", 0)]
+    signal = detect_outlier(candidate, peers)
+    assert signal.velocity_ratio == 1.0
