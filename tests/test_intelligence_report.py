@@ -38,6 +38,7 @@ def test_report_reads_persisted_history_and_ranks_ready_content(tmp_path):
     assert [x.content_id for x in report.ready] == ["fast", "slow"]
     assert report.insufficient_snapshot_history == ()
     assert report.insufficient_creator_history == ()
+    assert {x.peer_cohort_status for x in report.ready} == {"INSUFFICIENT_QUERY_PROVENANCE"}
 
 
 def test_report_separates_short_snapshot_history(tmp_path):
