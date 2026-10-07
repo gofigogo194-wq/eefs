@@ -127,7 +127,11 @@ def test_pipeline_reports_comparable_peer_cohort_without_changing_score_formula(
         history,
         CreatorBaselineCache(Transport()),
         peers,
-        PeerCohortPolicy(max_age_ratio=2.0, minimum_peers=3),
+        PeerCohortPolicy(
+            max_age_ratio=2.0,
+            minimum_peers=3,
+            max_observation_skew_seconds=7200,
+        ),
     )
     assert signal.status == "READY"
     assert signal.peer_cohort_status == "READY"
