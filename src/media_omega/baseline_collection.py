@@ -14,6 +14,7 @@ class BaselineCollectionResult:
     baseline: CreatorBaseline | None
     status: str
     source_refs: tuple[str, ...] = ()
+    source_observed_at: tuple[str, ...] = ()
 
 
 def collect_creator_baseline(
@@ -21,14 +22,11 @@ def collect_creator_baseline(
     creator_id: str,
     target_content_id: str | None = None,
     minimum_samples: int = 3,
-    observed_at: str | None = None,
 ) -> BaselineCollectionResult:
     if not creator_id.strip():
         raise ValueError("creator_id is required")
     if minimum_samples < 1:
         raise ValueError("minimum_samples must be positive")
-    if observed_at is None:
-        raise ValueError("observed_at is required for age-normalized baseline")
 
     ids = list(transport.channel_recent_video_ids(creator_id))
     excluded = False
@@ -45,10 +43,12 @@ def collect_creator_baseline(
 
     samples = []
     source_refs: list[str] = []
+    source_observed_at: list[str] = []
     for content_id in ids:
         detail = details.get(content_id)
         if detail is None:
             continue
+        observed_at = str(detail["observed_at"])
         sample = sample_at(
             int(detail["views"]),
             str(detail["published_at"]),
@@ -57,11 +57,18 @@ def collect_creator_baseline(
         if sample is not None:
             samples.append(sample)
             source_refs.append(f"api://youtube/videos/{content_id}")
+            source_observed_at.append(observed_at)
 
     if len(samples) < minimum_samples:
         return BaselineCollectionResult(
-            creator_id, len(ids), len(samples), excluded, None,
-            "INSUFFICIENT_HISTORY", tuple(source_refs),
+            creator_id,
+            len(ids),
+            len(samples),
+            excluded,
+            None,
+            "INSUFFICIENT_HISTORY",
+            tuple(source_refs),
+            tuple(source_observed_at),
         )
     return BaselineCollectionResult(
         creator_id,
@@ -71,4 +78,5 @@ def collect_creator_baseline(
         build_creator_baseline(creator_id, samples),
         "READY",
         tuple(source_refs),
+        tuple(source_observed_at),
     )

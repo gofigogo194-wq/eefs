@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from math import log1p
+from math import isfinite, log1p
 
 from .baseline import relative_to_creator
 from .baseline_cache import CreatorBaselineCache
@@ -16,6 +16,18 @@ def _time(value: str) -> datetime:
     if parsed.tzinfo is None:
         raise ValueError("timestamps must be timezone-aware")
     return parsed.astimezone(timezone.utc)
+
+
+@dataclass(frozen=True)
+class IntelligencePolicy:
+    max_baseline_skew_seconds: float = 900.0
+
+    def validate(self) -> None:
+        if (
+            not isfinite(self.max_baseline_skew_seconds)
+            or self.max_baseline_skew_seconds <= 0
+        ):
+            raise ValueError("max_baseline_skew_seconds must be finite and positive")
 
 
 @dataclass(frozen=True)
@@ -35,6 +47,7 @@ class IntelligenceSignal:
     version: str = "intelligence_pipeline.v4"
     platform: str = "youtube"
     source_evidence_refs: tuple[str, ...] = ()
+    baseline_max_skew_seconds: float = 0.0
 
 
 def evaluate_content(
@@ -42,15 +55,17 @@ def evaluate_content(
     baseline_cache: CreatorBaselineCache,
     peer_observations: list[ContentObservation] | None = None,
     cohort_policy: PeerCohortPolicy | None = None,
+    policy: IntelligencePolicy | None = None,
 ) -> IntelligenceSignal:
     if len(history) < 3:
         raise ValueError("intelligence pipeline requires at least 3 snapshots")
+    policy = policy or IntelligencePolicy()
+    policy.validate()
+
     ordered = sorted(history, key=lambda x: _time(x.observed_at))
     latest = ordered[-1]
-
-    # Validate momentum before any creator-history API work. Bad temporal
-    # evidence must fail closed without spending quota or producing a baseline.
     trend = momentum(ordered)
+
     cohort_status = "NOT_EVALUATED"
     peer_count = 0
     if cohort_policy is not None:
@@ -65,12 +80,12 @@ def evaluate_content(
     baseline_result = baseline_cache.get(
         latest.creator_id,
         latest.content_id,
-        latest.observed_at,
     )
     source_evidence_refs = tuple(dict.fromkeys(
         [item.evidence_ref for item in ordered]
         + list(baseline_result.source_refs)
     ))
+
     if baseline_result.baseline is None:
         return IntelligenceSignal(
             latest.content_id,
@@ -88,6 +103,46 @@ def evaluate_content(
             source_evidence_refs=source_evidence_refs,
         )
 
+    if not baseline_result.source_observed_at:
+        return IntelligenceSignal(
+            latest.content_id,
+            latest.creator_id,
+            0.0,
+            trend.acceleration_ratio,
+            trend.latest_velocity,
+            baseline_result.baseline.confidence,
+            0.0,
+            0.0,
+            "UNRELIABLE_CREATOR_BASELINE_TIME",
+            cohort_status,
+            peer_count,
+            platform=latest.platform,
+            source_evidence_refs=source_evidence_refs,
+        )
+
+    latest_time = _time(latest.observed_at)
+    max_skew = max(
+        abs((_time(value) - latest_time).total_seconds())
+        for value in baseline_result.source_observed_at
+    )
+    if max_skew > policy.max_baseline_skew_seconds:
+        return IntelligenceSignal(
+            latest.content_id,
+            latest.creator_id,
+            0.0,
+            trend.acceleration_ratio,
+            trend.latest_velocity,
+            baseline_result.baseline.confidence,
+            0.0,
+            0.0,
+            "STALE_CREATOR_BASELINE",
+            cohort_status,
+            peer_count,
+            platform=latest.platform,
+            source_evidence_refs=source_evidence_refs,
+            baseline_max_skew_seconds=round(max_skew, 6),
+        )
+
     relative = relative_to_creator(
         latest.views,
         latest.age_hours,
@@ -98,7 +153,6 @@ def evaluate_content(
         0.5 * history_conf + 0.5 * baseline_result.baseline.confidence,
         6,
     )
-
     creator_strength = log1p(max(relative, 0.0))
     momentum_strength = log1p(max(trend.acceleration_ratio, 0.0))
     raw_strength = 0.5 * creator_strength + 0.5 * momentum_strength
@@ -117,6 +171,7 @@ def evaluate_content(
         peer_count,
         platform=latest.platform,
         source_evidence_refs=source_evidence_refs,
+        baseline_max_skew_seconds=round(max_skew, 6),
     )
 
 

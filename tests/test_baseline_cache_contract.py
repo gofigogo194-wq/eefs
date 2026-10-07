@@ -20,9 +20,3 @@ def test_cache_rejects_empty_creator_before_transport():
     cache = CreatorBaselineCache(NoopTransport())
     with pytest.raises(ValueError, match="creator_id"):
         cache.get("   ")
-
-
-def test_cache_requires_observed_at_before_transport():
-    cache = CreatorBaselineCache(NoopTransport())
-    with pytest.raises(ValueError, match="observed_at"):
-        cache.get("creator")

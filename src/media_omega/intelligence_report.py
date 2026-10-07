@@ -14,6 +14,7 @@ class IntelligenceReport:
     ready: tuple[IntelligenceSignal, ...]
     insufficient_snapshot_history: tuple[str, ...]
     insufficient_creator_history: tuple[str, ...]
+    unreliable_creator_baseline: tuple[str, ...] = ()
     unreliable_interval: tuple[str, ...] = ()
     required_snapshots: int = 3
 
@@ -29,6 +30,7 @@ def analyze_intelligence(
     ready: list[IntelligenceSignal] = []
     short: list[str] = []
     no_creator_history: list[str] = []
+    baseline_time: list[str] = []
     unreliable: list[str] = []
 
     for latest in latest_observations:
@@ -48,22 +50,30 @@ def analyze_intelligence(
                 unreliable.append(latest.content_id)
                 continue
             raise
+
+        if signal.status in (
+            "STALE_CREATOR_BASELINE",
+            "UNRELIABLE_CREATOR_BASELINE_TIME",
+        ):
+            baseline_time.append(latest.content_id)
+            continue
         if signal.status != "READY":
             no_creator_history.append(latest.content_id)
             continue
         ready.append(signal)
 
-    ranked = tuple(rank_signals(ready))
     report = IntelligenceReport(
-        ranked,
-        tuple(sorted(short)),
-        tuple(sorted(no_creator_history)),
-        tuple(sorted(unreliable)),
+        ready=tuple(rank_signals(ready)),
+        insufficient_snapshot_history=tuple(sorted(short)),
+        insufficient_creator_history=tuple(sorted(no_creator_history)),
+        unreliable_creator_baseline=tuple(sorted(baseline_time)),
+        unreliable_interval=tuple(sorted(unreliable)),
     )
     journal.append("INTELLIGENCE_REPORT", {
         "ready": [asdict(x) for x in report.ready],
         "insufficient_snapshot_history": list(report.insufficient_snapshot_history),
         "insufficient_creator_history": list(report.insufficient_creator_history),
+        "unreliable_creator_baseline": list(report.unreliable_creator_baseline),
         "unreliable_interval": list(report.unreliable_interval),
         "required_snapshots": report.required_snapshots,
         "creator_baseline_cache_entries": cache.size,

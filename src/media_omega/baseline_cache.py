@@ -1,28 +1,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 
 from .baseline import build_creator_baseline, sample_at
 from .baseline_collection import BaselineCollectionResult
 
 
-def _normalized_time(value: str) -> str:
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        raise ValueError("observed_at must be timezone-aware")
-    return parsed.astimezone(timezone.utc).isoformat()
-
-
 @dataclass
 class CreatorBaselineCache:
-    """Run-scoped cache: fetch creator history once, derive age-normalized baselines locally."""
+    """Run-scoped cache for live creator-history samples.
+
+    Historical video views are age-normalized using the actual observation time
+    returned by the transport, never a target video's older snapshot time.
+    """
 
     transport: object
     minimum_samples: int = 3
     _raw_ids: dict[str, tuple[str, ...]] = field(default_factory=dict)
     _raw_details: dict[str, dict[str, dict[str, object]]] = field(default_factory=dict)
-    _results: dict[tuple[str, str | None, str], BaselineCollectionResult] = field(default_factory=dict)
+    _results: dict[tuple[str, str | None], BaselineCollectionResult] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.minimum_samples < 1:
@@ -44,14 +40,10 @@ class CreatorBaselineCache:
         self,
         creator_id: str,
         target_content_id: str | None = None,
-        observed_at: str | None = None,
     ) -> BaselineCollectionResult:
         if not creator_id.strip():
             raise ValueError("creator_id is required")
-        if observed_at is None:
-            raise ValueError("observed_at is required for age-normalized baseline")
-        normalized_observed_at = _normalized_time(observed_at)
-        key = (creator_id, target_content_id, normalized_observed_at)
+        key = (creator_id, target_content_id)
         if key in self._results:
             return self._results[key]
 
@@ -61,18 +53,22 @@ class CreatorBaselineCache:
         details = self._raw_details[creator_id]
         samples = []
         source_refs: list[str] = []
+        source_observed_at: list[str] = []
+
         for content_id in selected:
             detail = details.get(content_id)
             if detail is None:
                 continue
+            observed_at = str(detail["observed_at"])
             sample = sample_at(
                 int(detail["views"]),
                 str(detail["published_at"]),
-                normalized_observed_at,
+                observed_at,
             )
             if sample is not None:
                 samples.append(sample)
                 source_refs.append(f"api://youtube/videos/{content_id}")
+                source_observed_at.append(observed_at)
 
         excluded = target_content_id is not None and target_content_id in raw_ids
         baseline = (
@@ -88,6 +84,7 @@ class CreatorBaselineCache:
             baseline,
             "READY" if baseline is not None else "INSUFFICIENT_HISTORY",
             tuple(source_refs),
+            tuple(source_observed_at),
         )
         self._results[key] = result
         return result
