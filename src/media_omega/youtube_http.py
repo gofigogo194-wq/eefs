@@ -98,12 +98,14 @@ class YouTubeHTTPTransport:
         if len(clean) > 50:
             raise ValueError("YouTube videos.list supports at most 50 ids per request")
         payload = self._get_json("videos", {"part": "snippet,statistics", "id": ",".join(clean)})
+        observed_at = datetime.now(timezone.utc).isoformat()
         result: dict[str, dict[str, object]] = {}
         for item in payload.get("items", []):
             try:
                 result[str(item["id"])] = {
                     "views": int(item["statistics"]["viewCount"]),
                     "published_at": str(item["snippet"]["publishedAt"]),
+                    "observed_at": observed_at,
                 }
             except (KeyError, TypeError, ValueError) as exc:
                 raise YouTubePayloadError("invalid videos.list details payload") from exc
