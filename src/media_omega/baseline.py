@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from math import isfinite
 from statistics import median
+
+
+_MIN_RATE_AGE_HOURS = 1.0 / 60.0
 
 
 def _time(value: str) -> datetime:
@@ -21,8 +25,8 @@ class CreatorPerformanceSample:
     def views_per_hour(self) -> float:
         if self.views < 0:
             raise ValueError("views cannot be negative")
-        if self.age_hours <= 0:
-            raise ValueError("age_hours must be positive")
+        if not isfinite(self.age_hours) or self.age_hours < _MIN_RATE_AGE_HOURS:
+            raise ValueError("age_hours is too short or non-finite for reliable rate")
         return self.views / self.age_hours
 
 
@@ -44,11 +48,12 @@ def sample_at(
         raise ValueError("views cannot be negative")
     published = _time(published_at)
     observed = _time(observed_at)
-    if observed <= published:
+    age_seconds = (observed - published).total_seconds()
+    if age_seconds < 60.0:
         return None
     return CreatorPerformanceSample(
         views=views,
-        age_hours=(observed - published).total_seconds() / 3600.0,
+        age_hours=age_seconds / 3600.0,
     )
 
 
