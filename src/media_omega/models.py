@@ -23,8 +23,8 @@ class CreativePlan:
     platform: str
     format: str
     title: str
-    original: bool = True
-    rights_confirmed: bool = True
+    original: bool = False
+    rights_confirmed: bool = False
     estimated_cost: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
     id: str = field(default_factory=lambda: str(uuid4()))
