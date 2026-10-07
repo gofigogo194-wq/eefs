@@ -42,6 +42,8 @@ def run_readonly_cycle(
                 title=row["title"],
                 published_at=row["published_at"],
                 evidence_ref=row["evidence_ref"],
+                discovery_query=query,
+                content_format="unknown",
             )
             for row in rows
         )
