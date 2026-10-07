@@ -13,6 +13,7 @@ class BaselineCollectionResult:
     excluded_target: bool
     baseline: CreatorBaseline | None
     status: str
+    source_refs: tuple[str, ...] = ()
 
 
 def collect_creator_baseline(
@@ -43,6 +44,7 @@ def collect_creator_baseline(
         details.update({key: value for key, value in returned.items() if key in batch})
 
     samples = []
+    source_refs: list[str] = []
     for content_id in ids:
         detail = details.get(content_id)
         if detail is None:
@@ -54,10 +56,12 @@ def collect_creator_baseline(
         )
         if sample is not None:
             samples.append(sample)
+            source_refs.append(f"api://youtube/videos/{content_id}")
 
     if len(samples) < minimum_samples:
         return BaselineCollectionResult(
-            creator_id, len(ids), len(samples), excluded, None, "INSUFFICIENT_HISTORY"
+            creator_id, len(ids), len(samples), excluded, None,
+            "INSUFFICIENT_HISTORY", tuple(source_refs),
         )
     return BaselineCollectionResult(
         creator_id,
@@ -66,4 +70,5 @@ def collect_creator_baseline(
         excluded,
         build_creator_baseline(creator_id, samples),
         "READY",
+        tuple(source_refs),
     )
