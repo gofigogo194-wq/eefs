@@ -43,7 +43,7 @@ class IntelligenceSignal:
     status: str
     peer_cohort_status: str = "NOT_EVALUATED"
     peer_count: int = 0
-    peer_cohort_version: str = "peer_cohort.v1"
+    peer_cohort_version: str = "peer_cohort.v2"
     version: str = "intelligence_pipeline.v4"
     platform: str = "youtube"
     source_evidence_refs: tuple[str, ...] = ()
