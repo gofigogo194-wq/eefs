@@ -188,3 +188,25 @@ def test_legacy_snapshot_store_migrates_hashes_without_losing_data(tmp_path):
     assert store.verify_integrity() is True
     assert store.count() == 1
     assert store.history("youtube", "video")[0].views == 100
+
+
+def test_idempotent_append_cannot_hide_existing_payload_tamper(tmp_path):
+    path = tmp_path / "snapshots.db"
+    store = SnapshotStore(path)
+    original = point(1, 100)
+    assert store.append(original) is True
+
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER snapshots_append_only_update")
+        payload = db.execute(
+            "SELECT payload FROM snapshots LIMIT 1"
+        ).fetchone()[0]
+        value = json.loads(payload)
+        value["evidence_ref"] = "fixture://tampered"
+        db.execute(
+            "UPDATE snapshots SET payload=?",
+            (json.dumps(value, sort_keys=True, separators=(",", ":")),),
+        )
+
+    with pytest.raises(RuntimeError, match="hash mismatch"):
+        store.append(original)
