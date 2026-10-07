@@ -86,3 +86,12 @@ def test_evidence_type_is_required(tmp_path):
 def test_external_reference_is_not_accepted_as_journal_evidence(tmp_path):
     journal = DecisionJournal(tmp_path / "evidence.db")
     assert evidence_ref_exists(journal, "api://youtube/video") is False
+
+
+def test_same_payload_under_different_evidence_types_has_distinct_reference(tmp_path):
+    journal = DecisionJournal(tmp_path / "evidence.db")
+    a = record_evidence(journal, "type.a", {"x": 1})
+    b = record_evidence(journal, "type.b", {"x": 1})
+    assert a.evidence_ref != b.evidence_ref
+    assert evidence_ref_exists(journal, a.evidence_ref)
+    assert evidence_ref_exists(journal, b.evidence_ref)
