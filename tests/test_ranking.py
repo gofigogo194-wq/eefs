@@ -25,3 +25,10 @@ def test_ranking_is_deterministic_on_tie():
     a = candidate("a", 2, 2, 0.5, evidence=5)
     b = candidate("b", 2, 2, 0.5, evidence=5)
     assert [x.content_id for x in rank_opportunities([b, a])] == ["a", "b"]
+
+
+def test_extreme_acceleration_is_compressed_before_ranking():
+    moderate = candidate("moderate", 0.8, 10.0, 1.0)
+    extreme = candidate("extreme", 0.8, 10_000_000_000.0, 1.0)
+    assert opportunity_score(extreme) < 20.0
+    assert opportunity_score(extreme) > opportunity_score(moderate)
