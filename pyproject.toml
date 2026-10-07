@@ -9,6 +9,9 @@ description = "Evidence-driven autonomous media control plane"
 requires-python = ">=3.11"
 dependencies = []
 
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
 [project.scripts]
 media-omega = "media_omega.cli:main"
 
