@@ -10,6 +10,7 @@ from .snapshots import SnapshotStore
 from .scout import ScoutPolicy, ScoutTopic
 from .discovery import DiscoveryPolicy
 from .runtime import run_readonly_cycle
+from .refresh import refresh_tracked
 
 
 def _youtube_probe(video_id: str) -> int:
@@ -53,6 +54,24 @@ def _scout(queries: list[str], state_dir: str) -> int:
     return 0
 
 
+def _refresh(state_dir: str) -> int:
+    from pathlib import Path
+    root = Path(state_dir)
+    journal = DecisionJournal(root / "journal.db")
+    snapshots = SnapshotStore(root / "snapshots.db")
+    result = refresh_tracked(snapshots, YouTubeHTTPTransport(), journal)
+    print(json.dumps({
+        "ok": True,
+        "mode": result.mode,
+        "tracked": result.tracked,
+        "returned": result.returned,
+        "new_snapshots": result.new_snapshots,
+        "missing": result.missing,
+        "snapshot_total": snapshots.count(),
+    }))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="media-omega")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -61,12 +80,16 @@ def main(argv: list[str] | None = None) -> int:
     scout = sub.add_parser("scout", help="run one persistent read-only YouTube scouting cycle")
     scout.add_argument("--query", action="append", required=True)
     scout.add_argument("--state-dir", default=".media-omega")
+    refresh = sub.add_parser("refresh", help="refresh statistics for previously tracked YouTube videos")
+    refresh.add_argument("--state-dir", default=".media-omega")
 
     args = parser.parse_args(argv)
     if args.command == "youtube-probe":
         return _youtube_probe(args.video_id)
     if args.command == "scout":
         return _scout(args.query, args.state_dir)
+    if args.command == "refresh":
+        return _refresh(args.state_dir)
     return 2
 
 
