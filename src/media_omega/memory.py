@@ -154,6 +154,8 @@ class DecisionJournal:
     def append(self, event_type: str, payload: dict[str, Any]) -> int:
         if not event_type.strip():
             raise ValueError("event_type is required")
+        if event_type == "STATE_TRANSITION":
+            raise ValueError("STATE_TRANSITION requires append_state_transition")
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             rows = self._rows(db)
