@@ -12,7 +12,7 @@ YouTube read-only evidence → persisted observations → temporal momentum → 
 
 The former parallel modules `intelligence.py`, `evaluation.py`, `ranking.py`, and `scoring.py` were retired. They must not be reintroduced as a second scoring brain. New live opportunity features must enter through the versioned canonical `IntelligenceSignal` contract and its evidence/tests.
 
-Unknown creator history, malformed identity, unreliable temporal spacing, missing state, missing source provenance, unsupported evidence, or invalid workflow transitions fail closed. Scores are evidence-gated ranking signals, not probabilities or causal claims.
+Unknown creator history, malformed identity, sub-minute rate windows, unreliable temporal spacing, missing state, missing source provenance, non-finite JSON evidence, unsupported evidence, cross-entity evidence reuse, future evidence replay, or invalid workflow transitions fail closed. Scores are evidence-gated ranking signals, not probabilities or causal claims.
 
 ## Evidence and decision integrity
 
@@ -37,6 +37,8 @@ IDEA → EVIDENCE_COLLECTED → PLANNED → ASSETS_READY → VERIFIED → SCHEDU
 Terminal rejection/block paths are explicit and require a reason. State history is revalidated when read, including edge legality, contract version, field types, and evidence semantics.
 
 Transition contracts currently require:
+- every referenced evidence record to belong to the same workflow entity;
+- evidence to exist in the journal before the transition event it authorizes, so later evidence cannot retroactively legitimize an earlier transition;
 - EVIDENCE_COLLECTED: journal-verified evidence;
 - PLANNED: matching typed creative-plan evidence;
 - ASSETS_READY: typed asset-manifest evidence containing assets;
