@@ -31,6 +31,7 @@ def test_refresh_adds_second_snapshot_for_tracked_videos(tmp_path):
     assert len(history) == 2
     assert history[-1].discovery_query == "ambient sleep"
     assert history[-1].content_format == "unknown"
+    assert history[-1].creator_baseline_views == 0.0
 
 
 def test_refresh_tracks_missing_without_fabricating_snapshot(tmp_path):
