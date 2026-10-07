@@ -119,6 +119,7 @@ def _intelligence_report(state_dir: str) -> int:
         "ready_count": len(report.ready),
         "insufficient_snapshot_history_count": len(report.insufficient_snapshot_history),
         "insufficient_creator_history_count": len(report.insufficient_creator_history),
+        "unreliable_creator_baseline_count": len(report.unreliable_creator_baseline),
         "unreliable_interval_count": len(report.unreliable_interval),
         "signals": [
             {
@@ -134,6 +135,7 @@ def _intelligence_report(state_dir: str) -> int:
                 "peer_cohort_status": x.peer_cohort_status,
                 "peer_count": x.peer_count,
                 "peer_cohort_version": x.peer_cohort_version,
+                "baseline_max_skew_seconds": x.baseline_max_skew_seconds,
                 "version": x.version,
             } for x in report.ready
         ],
