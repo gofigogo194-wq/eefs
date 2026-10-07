@@ -52,3 +52,16 @@ def test_zero_previous_velocity_does_not_create_infinite_acceleration():
     assert signal.acceleration_ratio == 1.0
     assert signal.sustained_growth is False
     assert signal.formula_version == "momentum.v2"
+
+
+def test_momentum_rejects_sub_minute_sampling_noise():
+    history = [
+        ContentObservation("youtube", "x", "creator", "2026-10-01T00:00:00+00:00",
+                           "2026-10-01T01:00:00+00:00", 100, 1000, "fixture://x/1"),
+        ContentObservation("youtube", "x", "creator", "2026-10-01T00:00:00+00:00",
+                           "2026-10-01T01:00:30+00:00", 101, 1000, "fixture://x/2"),
+        ContentObservation("youtube", "x", "creator", "2026-10-01T00:00:00+00:00",
+                           "2026-10-01T01:01:00+00:00", 103, 1000, "fixture://x/3"),
+    ]
+    with pytest.raises(ValueError, match="too short"):
+        momentum(history)
