@@ -21,6 +21,8 @@ def collect_creator_baseline(
     target_content_id: str | None = None,
     minimum_samples: int = 3,
 ) -> BaselineCollectionResult:
+    if not creator_id.strip():
+        raise ValueError("creator_id is required")
     if minimum_samples < 1:
         raise ValueError("minimum_samples must be positive")
     ids = transport.channel_recent_video_ids(creator_id)
