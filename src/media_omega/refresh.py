@@ -28,7 +28,9 @@ def refresh_tracked(
     ids = [x.content_id for x in tracked]
     stats: dict[str, int] = {}
     for start in range(0, len(ids), 50):
-        stats.update(transport.video_statistics(ids[start:start + 50]))
+        batch = ids[start:start + 50]
+        returned = transport.video_statistics(batch)
+        stats.update({key: value for key, value in returned.items() if key in batch})
 
     inserted = 0
     for previous in tracked:
