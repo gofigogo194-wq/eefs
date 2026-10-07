@@ -15,3 +15,10 @@ def test_journal_rejects_non_finite_payload(tmp_path):
     with pytest.raises(ValueError):
         journal.append("METRIC", {"value": float("inf")})
     assert journal.read_all() == []
+
+
+def test_journal_rejects_non_mapping_payload(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    with pytest.raises(TypeError, match="dict"):
+        journal.append("EVENT", ["not", "a", "mapping"])
+    assert journal.read_all() == []
