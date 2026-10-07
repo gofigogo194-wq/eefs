@@ -25,7 +25,7 @@ def _time(value: str) -> datetime:
     return parsed
 
 
-def momentum(history: list[ContentObservation]) -> MomentumSignal:
+def momentum(history: list[ContentObservation], minimum_interval_seconds: float = 60.0) -> MomentumSignal:
     if len(history) < 3:
         raise ValueError("at least 3 observations are required for momentum")
     ordered = sorted(history, key=lambda x: _time(x.observed_at))
