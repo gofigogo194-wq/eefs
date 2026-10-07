@@ -69,3 +69,24 @@ def test_baseline_rejects_missing_or_invalid_history():
             "creator",
             [CreatorPerformanceSample(1, 0)],
         )
+
+
+def test_creator_baseline_rejects_sub_minute_or_non_finite_rate_age():
+    with pytest.raises(ValueError, match="too short"):
+        build_creator_baseline(
+            "creator",
+            [CreatorPerformanceSample(100, 0.001)],
+        )
+    with pytest.raises(ValueError, match="non-finite"):
+        build_creator_baseline(
+            "creator",
+            [CreatorPerformanceSample(100, float("inf"))],
+        )
+
+
+def test_sample_at_drops_sub_minute_history_instead_of_inflating_vph():
+    assert sample_at(
+        1000,
+        "2026-10-07T11:59:30+00:00",
+        "2026-10-07T12:00:00+00:00",
+    ) is None
