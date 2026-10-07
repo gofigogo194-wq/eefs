@@ -83,11 +83,14 @@ def record_evidence(
 def resolve_evidence(
     journal: DecisionJournal,
     evidence_ref: str,
+    before_event_id: int | None = None,
 ) -> EvidenceRecord | None:
     if not evidence_ref.startswith("journal://evidence/"):
         return None
     matches: list[EvidenceRecord] = []
     for event in journal.read_all():
+        if before_event_id is not None and int(event["id"]) >= before_event_id:
+            continue
         if event["event_type"] != "EVIDENCE":
             continue
         body = event["payload"]
