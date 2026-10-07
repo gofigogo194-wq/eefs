@@ -11,6 +11,7 @@ from .scout import ScoutPolicy, ScoutTopic
 from .discovery import DiscoveryPolicy
 from .runtime import run_readonly_cycle
 from .refresh import refresh_tracked
+from .report import analyze_tracked
 
 
 def _youtube_probe(video_id: str) -> int:
@@ -72,6 +73,31 @@ def _refresh(state_dir: str) -> int:
     return 0
 
 
+def _report(state_dir: str) -> int:
+    from pathlib import Path
+    root = Path(state_dir)
+    journal = DecisionJournal(root / "journal.db")
+    snapshots = SnapshotStore(root / "snapshots.db")
+    report = analyze_tracked(snapshots, journal)
+    print(json.dumps({
+        "ok": True,
+        "required_snapshots": report.required_snapshots,
+        "ready_count": len(report.ready),
+        "insufficient_count": len(report.insufficient_history),
+        "opportunities": [
+            {
+                "content_id": item.content_id,
+                "samples": item.sample_count,
+                "latest_velocity": item.latest_velocity,
+                "acceleration_ratio": item.acceleration_ratio,
+                "sustained_growth": item.sustained_growth,
+            }
+            for item in report.ready
+        ],
+    }))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="media-omega")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -82,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
     scout.add_argument("--state-dir", default=".media-omega")
     refresh = sub.add_parser("refresh", help="refresh statistics for previously tracked YouTube videos")
     refresh.add_argument("--state-dir", default=".media-omega")
+    report = sub.add_parser("report", help="analyze tracked videos with sufficient history")
+    report.add_argument("--state-dir", default=".media-omega")
 
     args = parser.parse_args(argv)
     if args.command == "youtube-probe":
@@ -90,6 +118,8 @@ def main(argv: list[str] | None = None) -> int:
         return _scout(args.query, args.state_dir)
     if args.command == "refresh":
         return _refresh(args.state_dir)
+    if args.command == "report":
+        return _report(args.state_dir)
     return 2
 
 
