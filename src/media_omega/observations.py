@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from math import log1p
-from statistics import median
+from datetime import datetime
 
 
 @dataclass(frozen=True)
@@ -14,6 +12,8 @@ class ContentObservation:
     published_at: str
     observed_at: str
     views: int
+    # Legacy storage field retained so existing snapshot DB payloads remain
+    # readable. Canonical Intelligence v4 never uses this lifetime-view value.
     creator_baseline_views: float
     evidence_ref: str
     discovery_query: str = ""
@@ -46,65 +46,3 @@ class ContentObservation:
     @property
     def views_per_hour(self) -> float:
         return self.views / self.age_hours
-
-    @property
-    def relative_performance(self) -> float:
-        if self.creator_baseline_views <= 0:
-            raise ValueError("creator baseline is unknown")
-        return self.views / self.creator_baseline_views
-
-
-@dataclass(frozen=True)
-class OutlierSignal:
-    content_id: str
-    platform: str
-    relative_performance: float
-    views_per_hour: float
-    velocity_ratio: float
-    outlier_strength: float
-    evidence_ref: str
-    formula_version: str = "outlier.v1"
-
-
-def _robust_ratio(value: float, peers: list[float]) -> float:
-    positive = [x for x in peers if x >= 0]
-    if not positive:
-        raise ValueError("peer baseline requires at least one valid peer")
-    baseline = median(positive)
-    if baseline <= 1e-6:
-        return 1.0 if value > 0 else 0.0
-    return value / baseline
-
-
-def detect_outlier(
-    observation: ContentObservation,
-    peer_observations: list[ContentObservation],
-) -> OutlierSignal:
-    observation.validate()
-    peers = [
-        p for p in peer_observations
-        if p.platform == observation.platform and p.content_id != observation.content_id
-    ]
-    for peer in peers:
-        peer.validate()
-
-    velocity_ratio = _robust_ratio(
-        observation.views_per_hour,
-        [p.views_per_hour for p in peers],
-    )
-    relative = observation.relative_performance
-
-    # Compress extreme ratios so a single huge number cannot dominate indefinitely.
-    # v1 is intentionally simple and versioned; weights require later empirical calibration.
-    raw = 0.55 * log1p(relative) + 0.45 * log1p(velocity_ratio)
-    strength = 1.0 - (1.0 / (1.0 + raw)) if raw > 0 else 0.0
-
-    return OutlierSignal(
-        content_id=observation.content_id,
-        platform=observation.platform,
-        relative_performance=round(relative, 6),
-        views_per_hour=round(observation.views_per_hour, 6),
-        velocity_ratio=round(velocity_ratio, 6),
-        outlier_strength=round(strength, 6),
-        evidence_ref=observation.evidence_ref,
-    )
