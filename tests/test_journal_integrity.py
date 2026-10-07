@@ -69,3 +69,36 @@ def test_hash_chain_detects_payload_tamper_when_guards_are_bypassed(tmp_path):
         db.execute("UPDATE events SET payload_json=? WHERE id=1", ('{"x":999}',))
 
     assert journal.verify_chain() is False
+
+
+def test_direct_unhashed_insert_is_blocked(tmp_path):
+    path = tmp_path / "journal.db"
+    DecisionJournal(path)
+    with sqlite3.connect(path) as db:
+        with pytest.raises(sqlite3.DatabaseError, match="hashed event fields"):
+            db.execute(
+                "INSERT INTO events(created_at,event_type,payload_json) VALUES(?,?,?)",
+                ("2026-10-07T00:00:00+00:00", "BYPASS", "{}"),
+            )
+
+
+def test_append_refuses_to_extend_a_tampered_chain(tmp_path):
+    path = tmp_path / "journal.db"
+    journal = DecisionJournal(path)
+    journal.append("A", {"x": 1})
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER events_append_only_update")
+        db.execute("UPDATE events SET payload_json=? WHERE id=1", ('{"x":2}',))
+    with pytest.raises(RuntimeError, match="hash chain"):
+        journal.append("B", {"y": 1})
+
+
+def test_read_all_fails_closed_after_tamper(tmp_path):
+    path = tmp_path / "journal.db"
+    journal = DecisionJournal(path)
+    journal.append("A", {"x": 1})
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER events_append_only_update")
+        db.execute("UPDATE events SET payload_json=? WHERE id=1", ('{"x":2}',))
+    with pytest.raises(RuntimeError, match="hash chain"):
+        journal.read_all()
