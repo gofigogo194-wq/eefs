@@ -201,7 +201,13 @@ class StateTransitionEngine:
                 if from_state is None or to_state not in _ALLOWED[from_state]:
                     raise RuntimeError("state transition history contains illegal edge")
                 try:
-                    self._validate_contract(to_state, evidence, reason)
+                    self._validate_contract(
+                        entity_id,
+                        to_state,
+                        evidence,
+                        reason,
+                        before_event_id=int(event["id"]),
+                    )
                 except ValueError as exc:
                     raise RuntimeError(
                         "state transition history violates evidence contract"
@@ -266,7 +272,7 @@ class StateTransitionEngine:
                 raise ValueError(
                     f"invalid state transition: {current.value} -> {to_state.value}"
                 )
-            self._validate_contract(to_state, evidence, reason)
+            self._validate_contract(entity_id, to_state, evidence, reason)
             transition = StateTransition(
                 entity_id=entity_id,
                 from_state=current,
@@ -288,35 +294,68 @@ class StateTransitionEngine:
             )
             return transition
 
+    @staticmethod
+    def _record_entity_id(record: EvidenceRecord) -> str:
+        explicit = record.payload.get("entity_id")
+        if isinstance(explicit, str) and explicit.strip():
+            return explicit
+        platform = record.payload.get("platform")
+        content_id = record.payload.get("content_id")
+        if (
+            isinstance(platform, str)
+            and platform.strip()
+            and isinstance(content_id, str)
+            and content_id.strip()
+        ):
+            return f"{platform}:{content_id}"
+        return ""
+
     def _require_records(
         self,
         refs: tuple[str, ...],
         label: str,
+        entity_id: str,
         type_prefix: str | None = None,
+        before_event_id: int | None = None,
     ) -> tuple[EvidenceRecord, ...]:
         if not refs:
             raise ValueError(f"{label} evidence is required")
         records: list[EvidenceRecord] = []
         for ref in refs:
-            record = resolve_evidence(self.journal, ref)
+            record = resolve_evidence(
+                self.journal,
+                ref,
+                before_event_id=before_event_id,
+            )
             if record is None:
-                raise ValueError(f"{label} evidence is not journal-verified")
+                raise ValueError(
+                    f"{label} evidence was not journal-verified before transition"
+                )
             if (
                 type_prefix is not None
                 and not record.receipt.evidence_type.startswith(type_prefix)
             ):
                 raise ValueError(f"{label} evidence has wrong type")
+            if self._record_entity_id(record) != entity_id:
+                raise ValueError(f"{label} evidence belongs to another entity")
             records.append(record)
         return tuple(records)
 
     def _validate_contract(
         self,
+        entity_id: str,
         to_state: WorkflowState,
         evidence: TransitionEvidence,
         reason: str,
+        before_event_id: int | None = None,
     ) -> None:
         if to_state is WorkflowState.EVIDENCE_COLLECTED:
-            self._require_records(evidence.evidence_refs, "collected")
+            self._require_records(
+                evidence.evidence_refs,
+                "collected",
+                entity_id,
+                before_event_id=before_event_id,
+            )
 
         elif to_state is WorkflowState.PLANNED:
             if not evidence.plan_id.strip():
@@ -324,7 +363,9 @@ class StateTransitionEngine:
             records = self._require_records(
                 (evidence.plan_ref,) if evidence.plan_ref else (),
                 "plan",
+                entity_id,
                 "creative_plan.",
+                before_event_id,
             )
             if records[0].payload.get("plan_id") != evidence.plan_id:
                 raise ValueError("plan evidence does not match plan_id")
@@ -333,7 +374,9 @@ class StateTransitionEngine:
             records = self._require_records(
                 evidence.asset_manifest_refs,
                 "asset manifest",
+                entity_id,
                 "asset_manifest.",
+                before_event_id,
             )
             for record in records:
                 assets = record.payload.get("assets")
@@ -344,7 +387,9 @@ class StateTransitionEngine:
             records = self._require_records(
                 (evidence.verification_ref,) if evidence.verification_ref else (),
                 "verification",
+                entity_id,
                 "verification.",
+                before_event_id,
             )
             if evidence.policy_decision != "ACCEPT":
                 raise ValueError("verified state requires policy ACCEPT")
@@ -357,7 +402,9 @@ class StateTransitionEngine:
             records = self._require_records(
                 (evidence.schedule_ref,) if evidence.schedule_ref else (),
                 "schedule",
+                entity_id,
                 "schedule.",
+                before_event_id,
             )
             if records[0].payload.get("schedule_id") != evidence.schedule_id:
                 raise ValueError("schedule evidence does not match schedule_id")
@@ -368,7 +415,9 @@ class StateTransitionEngine:
                     evidence.publication_receipt_ref,
                 ) if evidence.publication_receipt_ref else (),
                 "publication receipt",
+                entity_id,
                 "publication_receipt.",
+                before_event_id,
             )
             if evidence.published is not True:
                 raise ValueError("published state requires confirmed publication")
@@ -381,7 +430,9 @@ class StateTransitionEngine:
             self._require_records(
                 evidence.metric_refs,
                 "measurement",
+                entity_id,
                 "measurement.",
+                before_event_id,
             )
 
         elif to_state is WorkflowState.LEARNED:
@@ -392,7 +443,9 @@ class StateTransitionEngine:
                     evidence.learning_evidence_ref,
                 ) if evidence.learning_evidence_ref else (),
                 "learning",
+                entity_id,
                 "learning.",
+                before_event_id,
             )
             if records[0].payload.get("version") != evidence.learning_version:
                 raise ValueError(
