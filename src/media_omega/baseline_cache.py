@@ -60,6 +60,7 @@ class CreatorBaselineCache:
         selected = [x for x in raw_ids if x != target_content_id]
         details = self._raw_details[creator_id]
         samples = []
+        source_refs: list[str] = []
         for content_id in selected:
             detail = details.get(content_id)
             if detail is None:
@@ -71,6 +72,7 @@ class CreatorBaselineCache:
             )
             if sample is not None:
                 samples.append(sample)
+                source_refs.append(f"api://youtube/videos/{content_id}")
 
         excluded = target_content_id is not None and target_content_id in raw_ids
         baseline = (
@@ -85,6 +87,7 @@ class CreatorBaselineCache:
             excluded,
             baseline,
             "READY" if baseline is not None else "INSUFFICIENT_HISTORY",
+            tuple(source_refs),
         )
         self._results[key] = result
         return result
