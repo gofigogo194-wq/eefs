@@ -40,6 +40,22 @@ class SnapshotStore:
             ).fetchall()
         return [ContentObservation(**json.loads(row[0])) for row in rows]
 
+    def latest(self, platform: str = "youtube") -> list[ContentObservation]:
+        with sqlite3.connect(self.path) as conn:
+            rows = conn.execute("""
+                SELECT s.payload FROM snapshots s
+                JOIN (
+                    SELECT platform, content_id, MAX(observed_at) AS observed_at
+                    FROM snapshots WHERE platform=?
+                    GROUP BY platform, content_id
+                ) latest
+                ON s.platform=latest.platform
+                AND s.content_id=latest.content_id
+                AND s.observed_at=latest.observed_at
+                ORDER BY s.content_id
+            """, (platform,)).fetchall()
+        return [ContentObservation(**json.loads(row[0])) for row in rows]
+
     def count(self) -> int:
         with sqlite3.connect(self.path) as conn:
             return int(conn.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0])
