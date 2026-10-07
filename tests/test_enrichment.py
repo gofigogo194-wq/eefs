@@ -65,3 +65,14 @@ def test_enrichment_batches_youtube_limit(tmp_path):
     )
     assert [len(call) for call in transport.calls] == [50, 50, 1]
     assert result.enriched == 101
+
+
+def test_missing_creator_baseline_is_explicitly_unknown_not_fabricated(tmp_path):
+    observations, result = enrich_statistics(
+        [item("a")],
+        FakeStats(),
+        DecisionJournal(tmp_path / "e.db"),
+        observed_at="2026-10-07T01:00:00+00:00",
+    )
+    assert result.enriched == 1
+    assert observations[0].creator_baseline_views == 0.0
