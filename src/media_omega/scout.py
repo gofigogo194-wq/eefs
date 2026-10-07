@@ -33,6 +33,10 @@ class ScoutPolicy:
 
 
 def _posterior(topic: ScoutTopic) -> float:
+    if not topic.query.strip():
+        raise ValueError("scout query is required")
+    if not 0.0 <= topic.prior_score <= 1.0:
+        raise ValueError("prior_score must be between 0 and 1")
     if topic.observations < 0 or topic.successes < 0 or topic.successes > topic.observations:
         raise ValueError("invalid scout history")
     empirical = (topic.successes + 1) / (topic.observations + 2)
