@@ -7,7 +7,8 @@ from media_omega.snapshots import SnapshotStore
 def obs(cid, views=100):
     return ContentObservation(
         "youtube", cid, "creator", "2026-10-07T00:00:00+00:00",
-        "2026-10-07T01:00:00+00:00", views, 1000, f"api://youtube/{cid}/1"
+        "2026-10-07T01:00:00+00:00", views, 1000, f"api://youtube/{cid}/1",
+        "ambient sleep", "unknown",
     )
 
 
@@ -26,7 +27,10 @@ def test_refresh_adds_second_snapshot_for_tracked_videos(tmp_path):
     )
     assert result.tracked == 2
     assert result.new_snapshots == 2
-    assert len(store.history("youtube", "a")) == 2
+    history = store.history("youtube", "a")
+    assert len(history) == 2
+    assert history[-1].discovery_query == "ambient sleep"
+    assert history[-1].content_format == "unknown"
 
 
 def test_refresh_tracks_missing_without_fabricating_snapshot(tmp_path):
