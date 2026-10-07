@@ -1,6 +1,6 @@
 # MEDIA Ω
 
-Autonomous, evidence-driven media operator.
+Autonomous, evidence-driven media operator under construction.
 
 ## Mission
 
@@ -23,12 +23,20 @@ DISCOVER → EVALUATE → PLAN → CREATE → VERIFY → PUBLISH → MEASURE →
 - Platform policy, copyright, account safety, and budget limits override growth objectives.
 - A failed or uncertain safety/policy check fails closed.
 - Production credentials and destructive account actions require an explicit capability grant.
+- No workflow state may be skipped merely because a caller claims success.
+- A PUBLISHED state requires journal-verified publication evidence whose payload confirms a real publication.
 
-## Bootstrap status
+## Candidate status
 
-**v0.0.1 — architecture/bootstrap**
+The Candidate currently proves the read-only path:
 
-No production publisher exists yet. No claim of autonomous production operation is made.
+YouTube discovery → persisted observations → temporal momentum → age-normalized creator baseline v2 → peer-cohort diagnostics → IntelligenceSignal v4 → Orchestrator selection → journal evidence receipt → EVIDENCE_COLLECTED state.
+
+The former duplicate intelligence/scoring paths have been retired. Workflow transitions are enforced by a centralized state engine. The decision journal uses SQLite append-only guards plus a tamper-evident hash chain. Evidence references are content-addressed and bind both evidence type and payload.
+
+Candidate CI currently gates Python 3.11–3.14 on Linux and Python 3.14 on Windows with pinned pytest.
+
+No production publisher exists yet. No autonomous public-publishing claim is made.
 
 ## Open-source reconnaissance
 
