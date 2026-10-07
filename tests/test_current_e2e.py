@@ -36,6 +36,7 @@ class Transport:
             content_id: {
                 "views": 1000,
                 "published_at": "2026-10-07T00:00:00+00:00",
+                "observed_at": "2026-10-07T03:00:00+00:00",
             }
             for content_id in ids
         }
