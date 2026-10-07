@@ -16,6 +16,8 @@ class ContentObservation:
     views: int
     creator_baseline_views: float
     evidence_ref: str
+    discovery_query: str = ""
+    content_format: str = "unknown"
 
     def validate(self) -> None:
         if not self.platform.strip() or not self.content_id.strip() or not self.creator_id.strip():
