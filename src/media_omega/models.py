@@ -18,28 +18,6 @@ class Decision(str, Enum):
 
 
 @dataclass(frozen=True)
-class Opportunity:
-    source: str
-    topic: str
-    outlier_strength: float
-    demand_growth: float
-    competition_inverse: float
-    expected_retention: float
-    monetization: float
-    production_cost: float
-    risk: float
-    evidence_refs: tuple[str, ...] = ()
-    id: str = field(default_factory=lambda: str(uuid4()))
-
-
-@dataclass(frozen=True)
-class ScoredOpportunity:
-    opportunity: Opportunity
-    score: float
-    formula_version: str
-
-
-@dataclass(frozen=True)
 class CreativePlan:
     opportunity_id: str
     platform: str

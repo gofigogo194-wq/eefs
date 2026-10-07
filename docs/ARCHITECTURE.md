@@ -4,6 +4,16 @@
 
 MEDIA Ω is not a "make N videos per day" bot. It is a goal-directed media operating system. Formats, platforms, topics, duration, and creative style are decisions made from evidence within policy and budget constraints.
 
+## Canonical live intelligence path
+
+There is exactly one live opportunity-decision path:
+
+YouTube read-only evidence → persisted observations → temporal momentum → age-normalized creator baseline v2 → IntelligenceSignal v3 → rank_signals → Orchestrator.choose_intelligence.
+
+The former parallel modules `intelligence.py`, `evaluation.py`, `ranking.py`, and `scoring.py` were retired from the Candidate branch. They must not be reintroduced as a second scoring brain. New opportunity features must enter through the versioned canonical `IntelligenceSignal` contract and its evidence/tests.
+
+Unknown creator history, malformed identity, unreliable temporal spacing, missing state, and unsupported evidence fail closed. Scores are evidence-gated ranking signals, not probabilities or causal claims.
+
 ## Control plane
 
 ### 1. Opportunity Intelligence
@@ -11,7 +21,7 @@ Collects permitted public signals, channel/account analytics, search demand, tre
 
 ### 2. Outlier Engine
 Separates raw popularity from abnormal performance. Candidate features include:
-- performance relative to a creator/channel baseline;
+- performance relative to an age-normalized creator/channel baseline;
 - velocity and acceleration;
 - age-normalized engagement;
 - saturation/competition;
@@ -22,7 +32,7 @@ Separates raw popularity from abnormal performance. Candidate features include:
 It never treats a viral item as content to copy.
 
 ### 3. Strategy / Portfolio Brain
-Chooses experiments across exploration and exploitation. It may select long-form, Shorts, Reels, images, audio-led content, or reject all opportunities when expected value is poor.
+Chooses experiments across exploration and exploitation. It may select long-form, Shorts, Reels, images, audio-led content, or reject all opportunities when expected value is poor. This layer is not yet a production implementation and may not bypass canonical Intelligence v3.
 
 ### 4. Creative Planner
 Turns an opportunity into an original creative brief with audience, hook, format, asset plan, metadata hypotheses, budget, and success/failure criteria.
@@ -61,11 +71,12 @@ Bootstrap begins at L0/L1. Higher levels are earned by tests and explicit accoun
 ## Initial implementation slices
 
 1. Domain contracts + SQLite event/decision journal.
-2. Opportunity/outlier engine with deterministic fixtures.
-3. Strategy portfolio selector.
-4. Creator provider interfaces and local fake providers.
-5. Verification gate.
-6. Publisher dry-run + idempotency.
-7. YouTube private/unlisted test adapter.
-8. Analytics ingestion.
-9. Closed-loop shadow run before any L3 autonomy.
+2. Canonical age-normalized opportunity intelligence with deterministic fixtures.
+3. Peer cohort provenance and comparability.
+4. Strategy portfolio selector.
+5. Creator provider interfaces and local fake providers.
+6. Verification gate.
+7. Publisher dry-run + idempotency.
+8. YouTube private/unlisted test adapter.
+9. Analytics ingestion.
+10. Closed-loop shadow run before any L3 autonomy.
