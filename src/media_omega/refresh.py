@@ -45,6 +45,8 @@ def refresh_tracked(
             views=int(stats[previous.content_id]),
             creator_baseline_views=previous.creator_baseline_views,
             evidence_ref=f"api://youtube/videos/{previous.content_id}@{timestamp}",
+            discovery_query=previous.discovery_query,
+            content_format=previous.content_format,
         )
         if store.append(current):
             inserted += 1
