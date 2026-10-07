@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 
 from .memory import DecisionJournal
-from .ranking import RankedOpportunity, rank_opportunities
 from .snapshots import SnapshotStore
 from .timeseries import momentum
 
