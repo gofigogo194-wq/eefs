@@ -56,7 +56,7 @@ def collect_creator_baseline(
         )
         if sample is not None:
             samples.append(sample)
-            source_refs.append(f"api://youtube/videos/{content_id}")
+            source_refs.append(f"api://youtube/videos/{content_id}@{observed_at}")
             source_observed_at.append(observed_at)
 
     if len(samples) < minimum_samples:
