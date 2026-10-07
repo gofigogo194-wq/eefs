@@ -26,10 +26,12 @@ class SnapshotStore:
     def append(self, observation: ContentObservation) -> bool:
         observation.validate()
         payload = json.dumps(asdict(observation), sort_keys=True)
+        observed = datetime.fromisoformat(observation.observed_at.replace("Z", "+00:00"))
+        observed_key = observed.astimezone(timezone.utc).isoformat()
         with sqlite3.connect(self.path) as conn:
             cursor = conn.execute(
                 "INSERT OR IGNORE INTO snapshots(platform, content_id, observed_at, payload) VALUES (?, ?, ?, ?)",
-                (observation.platform, observation.content_id, observation.observed_at, payload),
+                (observation.platform, observation.content_id, observed_key, payload),
             )
             return cursor.rowcount == 1
 
