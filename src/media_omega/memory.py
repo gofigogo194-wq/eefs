@@ -31,6 +31,20 @@ def _hash_event(
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _verify_rows(rows: list[tuple]) -> bool:
+    previous = _GENESIS_HASH
+    for _, created_at, event_type, payload_json, prev_hash, event_hash in rows:
+        if prev_hash is None or event_hash is None:
+            return False
+        if prev_hash != previous:
+            return False
+        expected = _hash_event(previous, created_at, event_type, payload_json)
+        if event_hash != expected:
+            return False
+        previous = event_hash
+    return True
+
+
 class DecisionJournal:
     def __init__(self, path: str | Path = "data/media_omega.db") -> None:
         self.path = Path(path)
@@ -39,6 +53,13 @@ class DecisionJournal:
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=30.0)
+
+    @staticmethod
+    def _rows(db: sqlite3.Connection) -> list[tuple]:
+        return db.execute(
+            "SELECT id,created_at,event_type,payload_json,prev_hash,event_hash "
+            "FROM events ORDER BY id"
+        ).fetchall()
 
     def _init_schema(self) -> None:
         with self._connect() as db:
@@ -54,32 +75,42 @@ class DecisionJournal:
                 row[1]
                 for row in db.execute("PRAGMA table_info(events)").fetchall()
             }
+            legacy_schema = "prev_hash" not in columns or "event_hash" not in columns
+
+            db.execute("DROP TRIGGER IF EXISTS events_require_hash_insert")
             if "prev_hash" not in columns:
                 db.execute("ALTER TABLE events ADD COLUMN prev_hash TEXT")
             if "event_hash" not in columns:
                 db.execute("ALTER TABLE events ADD COLUMN event_hash TEXT")
 
-            needs_backfill = db.execute(
-                "SELECT 1 FROM events WHERE prev_hash IS NULL OR event_hash IS NULL LIMIT 1"
-            ).fetchone() is not None
-            if needs_backfill:
+            rows = self._rows(db)
+            has_missing_hash = any(
+                row[4] is None or row[5] is None
+                for row in rows
+            )
+            if has_missing_hash:
+                if not legacy_schema:
+                    raise RuntimeError("decision journal contains unhashed events")
                 db.execute("DROP TRIGGER IF EXISTS events_append_only_update")
                 db.execute("DROP TRIGGER IF EXISTS events_append_only_delete")
                 previous = _GENESIS_HASH
-                rows = db.execute(
-                    "SELECT id,created_at,event_type,payload_json,prev_hash,event_hash "
-                    "FROM events ORDER BY id"
-                ).fetchall()
                 for row in rows:
-                    event_id, created_at, event_type, payload_json, prev_hash, event_hash = row
-                    expected = _hash_event(previous, created_at, event_type, payload_json)
-                    if prev_hash is None or event_hash is None:
-                        db.execute(
-                            "UPDATE events SET prev_hash=?,event_hash=? WHERE id=?",
-                            (previous, expected, event_id),
-                        )
-                        event_hash = expected
-                    previous = str(event_hash)
+                    event_id, created_at, event_type, payload_json, _, _ = row
+                    event_hash = _hash_event(
+                        previous,
+                        created_at,
+                        event_type,
+                        payload_json,
+                    )
+                    db.execute(
+                        "UPDATE events SET prev_hash=?,event_hash=? WHERE id=?",
+                        (previous, event_hash, event_id),
+                    )
+                    previous = event_hash
+
+            rows = self._rows(db)
+            if not _verify_rows(rows):
+                raise RuntimeError("decision journal hash chain is invalid")
 
             db.execute("""CREATE TRIGGER IF NOT EXISTS events_append_only_update
                 BEFORE UPDATE ON events
@@ -93,6 +124,13 @@ class DecisionJournal:
                     SELECT RAISE(ABORT, 'events are append-only');
                 END
             """)
+            db.execute("""CREATE TRIGGER IF NOT EXISTS events_require_hash_insert
+                BEFORE INSERT ON events
+                WHEN NEW.prev_hash IS NULL OR NEW.event_hash IS NULL
+                BEGIN
+                    SELECT RAISE(ABORT, 'hashed event fields are required');
+                END
+            """)
 
     def append(self, event_type: str, payload: dict[str, Any]) -> int:
         if not event_type.strip():
@@ -101,10 +139,10 @@ class DecisionJournal:
         created_at = utc_now()
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute(
-                "SELECT event_hash FROM events ORDER BY id DESC LIMIT 1"
-            ).fetchone()
-            prev_hash = str(row[0]) if row and row[0] else _GENESIS_HASH
+            rows = self._rows(db)
+            if not _verify_rows(rows):
+                raise RuntimeError("decision journal hash chain is invalid")
+            prev_hash = str(rows[-1][5]) if rows else _GENESIS_HASH
             event_hash = _hash_event(prev_hash, created_at, event_type, body)
             cur = db.execute(
                 "INSERT INTO events("
@@ -116,34 +154,20 @@ class DecisionJournal:
 
     def verify_chain(self) -> bool:
         with self._connect() as db:
-            rows = db.execute(
-                "SELECT id,created_at,event_type,payload_json,prev_hash,event_hash "
-                "FROM events ORDER BY id"
-            ).fetchall()
-        previous = _GENESIS_HASH
-        for _, created_at, event_type, payload_json, prev_hash, event_hash in rows:
-            if prev_hash is None or event_hash is None:
-                return False
-            if prev_hash != previous:
-                return False
-            expected = _hash_event(previous, created_at, event_type, payload_json)
-            if event_hash != expected:
-                return False
-            previous = event_hash
-        return True
+            return _verify_rows(self._rows(db))
 
     def chain_head(self) -> str:
         with self._connect() as db:
-            row = db.execute(
-                "SELECT event_hash FROM events ORDER BY id DESC LIMIT 1"
-            ).fetchone()
-        return str(row[0]) if row and row[0] else _GENESIS_HASH
+            rows = self._rows(db)
+        if not _verify_rows(rows):
+            raise RuntimeError("decision journal hash chain is invalid")
+        return str(rows[-1][5]) if rows else _GENESIS_HASH
 
     def read_all(self) -> list[dict[str, Any]]:
         with self._connect() as db:
-            rows = db.execute(
-                "SELECT id,created_at,event_type,payload_json FROM events ORDER BY id"
-            ).fetchall()
+            rows = self._rows(db)
+        if not _verify_rows(rows):
+            raise RuntimeError("decision journal hash chain is invalid")
         return [
             {
                 "id": row[0],
