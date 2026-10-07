@@ -45,3 +45,15 @@ def test_insufficient_history_is_cached_too():
     assert cache.get("c", "c-target").status == "INSUFFICIENT_HISTORY"
     assert cache.get("c", "c-target").status == "INSUFFICIENT_HISTORY"
     assert t.history_calls == ["c"]
+
+
+def test_same_creator_different_targets_reuse_one_raw_history_fetch():
+    t = CountingTransport()
+    cache = CreatorBaselineCache(t)
+    first = cache.get("creator", "creator-target")
+    second = cache.get("creator", "creator-a")
+    assert first.status == "READY"
+    assert second.status == "READY"
+    assert t.history_calls == ["creator"]
+    assert len(t.stats_calls) == 1
+    assert cache.size == 2
