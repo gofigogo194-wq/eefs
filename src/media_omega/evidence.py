@@ -16,6 +16,12 @@ class EvidenceReceipt:
     evidence_ref: str
 
 
+@dataclass(frozen=True)
+class EvidenceRecord:
+    receipt: EvidenceReceipt
+    payload: dict[str, Any]
+
+
 def canonical_payload(value: Any) -> dict[str, Any]:
     if is_dataclass(value):
         payload = asdict(value)
@@ -62,18 +68,48 @@ def record_evidence(
     )
 
 
-def evidence_ref_exists(journal: DecisionJournal, evidence_ref: str) -> bool:
+def resolve_evidence(
+    journal: DecisionJournal,
+    evidence_ref: str,
+) -> EvidenceRecord | None:
     if not evidence_ref.startswith("journal://evidence/"):
-        return False
+        return None
+    matches: list[EvidenceRecord] = []
     for event in journal.read_all():
         if event["event_type"] != "EVIDENCE":
             continue
-        payload = event["payload"]
-        if payload.get("evidence_ref") != evidence_ref:
+        body = event["payload"]
+        if body.get("evidence_ref") != evidence_ref:
             continue
-        digest = payload.get("sha256")
-        value = payload.get("payload")
-        if not isinstance(digest, str) or not isinstance(value, dict):
-            return False
-        return digest == evidence_hash(value)
-    return False
+        evidence_type = body.get("evidence_type")
+        digest = body.get("sha256")
+        payload = body.get("payload")
+        if (
+            not isinstance(evidence_type, str)
+            or not evidence_type.strip()
+            or not isinstance(digest, str)
+            or not isinstance(payload, dict)
+        ):
+            return None
+        if digest != evidence_hash(payload):
+            return None
+        if evidence_ref != f"journal://evidence/{digest}":
+            return None
+        matches.append(EvidenceRecord(
+            receipt=EvidenceReceipt(
+                event_id=int(event["id"]),
+                evidence_type=evidence_type,
+                sha256=digest,
+                evidence_ref=evidence_ref,
+            ),
+            payload=payload,
+        ))
+    if not matches:
+        return None
+    # Duplicate identical evidence is allowed; the newest journal receipt is
+    # returned while the content-addressed ref remains stable.
+    return matches[-1]
+
+
+def evidence_ref_exists(journal: DecisionJournal, evidence_ref: str) -> bool:
+    return resolve_evidence(journal, evidence_ref) is not None
