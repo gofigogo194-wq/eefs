@@ -38,3 +38,17 @@ def test_momentum_rejects_mixed_content():
 def test_momentum_rejects_decreasing_cumulative_views():
     with pytest.raises(ValueError):
         momentum([point(1, 100), point(2, 90), point(3, 120)])
+
+
+def test_zero_previous_velocity_does_not_create_infinite_acceleration():
+    history = [
+        _obs("x", 0, 100),
+        _obs("x", 1, 100),
+        _obs("x", 2, 200),
+    ]
+    signal = momentum(history)
+    assert signal.previous_velocity == 0.0
+    assert signal.latest_velocity == 100.0
+    assert signal.acceleration_ratio == 1.0
+    assert signal.sustained_growth is False
+    assert signal.formula_version == "momentum.v2"
