@@ -60,8 +60,12 @@ class OutlierSignal:
 
 def _robust_ratio(value: float, peers: list[float]) -> float:
     positive = [x for x in peers if x >= 0]
-    baseline = median(positive) if positive else 0.0
-    return value / max(baseline, 1e-9)
+    if not positive:
+        raise ValueError("peer baseline requires at least one valid peer")
+    baseline = median(positive)
+    if baseline <= 1e-6:
+        return 1.0 if value > 0 else 0.0
+    return value / baseline
 
 
 def detect_outlier(
