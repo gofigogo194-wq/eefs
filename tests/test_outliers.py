@@ -1,6 +1,6 @@
 import pytest
 
-from media_omega.evidence import evidence_hash, record_evidence
+from media_omega.evidence import evidence_hash, evidence_ref_exists, record_evidence
 from media_omega.memory import DecisionJournal
 from media_omega.observations import ContentObservation, detect_outlier
 
@@ -56,7 +56,9 @@ def test_evidence_hash_is_stable_and_journaled(tmp_path):
     journal = DecisionJournal(tmp_path / "evidence.db")
     value = obs("x", 100)
     assert evidence_hash(value) == evidence_hash(value)
-    record_evidence(journal, "content_observation.v1", value)
+    receipt = record_evidence(journal, "content_observation.v1", value)
+    assert receipt.evidence_ref.startswith("journal://evidence/")
+    assert evidence_ref_exists(journal, receipt.evidence_ref) is True
     event = journal.read_all()[0]
     assert event["event_type"] == "EVIDENCE"
     assert len(event["payload"]["sha256"]) == 64
@@ -73,3 +75,14 @@ def test_zero_velocity_peer_cohort_cannot_create_exploding_ratio():
     peers = [obs("p1", 0), obs("p2", 0), obs("p3", 0)]
     signal = detect_outlier(candidate, peers)
     assert signal.velocity_ratio == 1.0
+
+
+def test_evidence_type_is_required(tmp_path):
+    journal = DecisionJournal(tmp_path / "evidence.db")
+    with pytest.raises(ValueError, match="evidence_type"):
+        record_evidence(journal, "   ", {"x": 1})
+
+
+def test_external_reference_is_not_accepted_as_journal_evidence(tmp_path):
+    journal = DecisionJournal(tmp_path / "evidence.db")
+    assert evidence_ref_exists(journal, "api://youtube/video") is False
