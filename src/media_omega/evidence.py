@@ -33,7 +33,7 @@ def canonical_payload(value: Any) -> dict[str, Any]:
         payload = dict(value)
     else:
         raise TypeError("evidence payload must be a dataclass or dict")
-    json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return payload
 
 
@@ -43,6 +43,7 @@ def evidence_hash(value: Any) -> str:
         payload,
         sort_keys=True,
         separators=(",", ":"),
+        allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
