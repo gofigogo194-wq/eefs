@@ -58,3 +58,20 @@ def test_latest_uses_absolute_time_not_lexical_offset_order(tmp_path):
     store.append(earlier)
     store.append(later)
     assert store.latest("youtube")[0].views == 200
+
+
+def test_same_instant_with_different_offsets_is_idempotent(tmp_path):
+    store = SnapshotStore(tmp_path / "snapshots.db")
+    a = ContentObservation(
+        "youtube", "same-instant", "creator",
+        "2026-10-07T00:00:00+00:00", "2026-10-07T13:00:00+07:00",
+        100, 1000, "fixture://a",
+    )
+    b = ContentObservation(
+        "youtube", "same-instant", "creator",
+        "2026-10-07T00:00:00+00:00", "2026-10-07T06:00:00+00:00",
+        100, 1000, "fixture://b",
+    )
+    assert store.append(a) is True
+    assert store.append(b) is False
+    assert store.count() == 1
