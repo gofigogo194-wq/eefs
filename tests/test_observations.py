@@ -22,9 +22,10 @@ def test_identity_fields_are_required(field):
         observation.validate()
 
 
-def test_unknown_creator_baseline_fails_closed():
-    with pytest.raises(ValueError, match="baseline is unknown"):
-        _ = make(creator_baseline_views=0).relative_performance
+def test_legacy_creator_baseline_field_is_storage_only():
+    observation = make(creator_baseline_views=0)
+    observation.validate()
+    assert not hasattr(observation, "relative_performance")
 
 
 def test_sub_minute_content_age_fails_closed_instead_of_clamping_rate():
