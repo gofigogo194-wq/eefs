@@ -50,6 +50,32 @@ class YouTubeHTTPTransport:
             raise YouTubePayloadError("YouTube API returned non-object JSON")
         return payload
 
+    def discover_videos(self, query: str) -> list[dict[str, str]]:
+        if not query.strip():
+            raise ValueError("query is required")
+        payload = self._get_json("search", {
+            "part": "snippet",
+            "q": query,
+            "type": "video",
+            "order": "date",
+            "maxResults": min(max(self.config.max_results, 1), 50),
+        })
+        result: list[dict[str, str]] = []
+        for item in payload.get("items", []):
+            try:
+                video_id = str(item["id"]["videoId"])
+                snippet = item["snippet"]
+                result.append({
+                    "content_id": video_id,
+                    "creator_id": str(snippet["channelId"]),
+                    "title": str(snippet["title"]),
+                    "published_at": str(snippet["publishedAt"]),
+                    "evidence_ref": f"api://youtube/search/{video_id}",
+                })
+            except (KeyError, TypeError) as exc:
+                raise YouTubePayloadError("invalid search.list discovery payload") from exc
+        return result
+
     def video_statistics(self, video_ids: list[str]) -> dict[str, int]:
         clean = list(dict.fromkeys(x.strip() for x in video_ids if x.strip()))
         if not clean:
