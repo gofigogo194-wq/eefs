@@ -43,3 +43,29 @@ def test_scout_cli_runs_persistent_cycle(monkeypatch, tmp_path, capsys):
     assert payload["mode"] == "read-only"
     assert payload["observations"] == 1
     assert payload["snapshot_total"] == 1
+
+
+def test_refresh_cli_reuses_persistent_state(monkeypatch, tmp_path, capsys):
+    from media_omega import cli
+    from media_omega.observations import ContentObservation
+    from media_omega.snapshots import SnapshotStore
+
+    store = SnapshotStore(tmp_path / "snapshots.db")
+    store.append(ContentObservation(
+        "youtube", "abc", "creator",
+        "2026-10-07T00:00:00+00:00",
+        "2026-10-07T01:00:00+00:00",
+        100, 1000, "api://youtube/abc/1",
+    ))
+
+    class FakeTransport:
+        def video_statistics(self, ids):
+            return {"abc": 250}
+
+    monkeypatch.setattr(cli, "YouTubeHTTPTransport", FakeTransport)
+    code = cli.main(["refresh", "--state-dir", str(tmp_path)])
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["tracked"] == 1
+    assert payload["new_snapshots"] == 1
+    assert payload["snapshot_total"] == 2
