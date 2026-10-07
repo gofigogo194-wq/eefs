@@ -8,12 +8,16 @@ from typing import Any
 from .memory import DecisionJournal
 
 
+_RECEIPT_VERSION = "evidence_receipt.v2"
+
+
 @dataclass(frozen=True)
 class EvidenceReceipt:
     event_id: int
     evidence_type: str
     sha256: str
     evidence_ref: str
+    version: str = _RECEIPT_VERSION
 
 
 @dataclass(frozen=True)
@@ -29,7 +33,6 @@ def canonical_payload(value: Any) -> dict[str, Any]:
         payload = dict(value)
     else:
         raise TypeError("evidence payload must be a dataclass or dict")
-    # Fail early if evidence cannot be represented deterministically.
     json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return payload
 
@@ -44,6 +47,14 @@ def evidence_hash(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _typed_digest(evidence_type: str, payload: dict[str, Any]) -> str:
+    return evidence_hash({
+        "evidence_type": evidence_type,
+        "payload": payload,
+        "receipt_version": _RECEIPT_VERSION,
+    })
+
+
 def record_evidence(
     journal: DecisionJournal,
     evidence_type: str,
@@ -52,12 +63,13 @@ def record_evidence(
     if not evidence_type.strip():
         raise ValueError("evidence_type is required")
     payload = canonical_payload(value)
-    digest = evidence_hash(payload)
+    digest = _typed_digest(evidence_type, payload)
     evidence_ref = f"journal://evidence/{digest}"
     event_id = journal.append("EVIDENCE", {
         "evidence_type": evidence_type,
         "sha256": digest,
         "evidence_ref": evidence_ref,
+        "receipt_version": _RECEIPT_VERSION,
         "payload": payload,
     })
     return EvidenceReceipt(
@@ -84,6 +96,7 @@ def resolve_evidence(
         evidence_type = body.get("evidence_type")
         digest = body.get("sha256")
         payload = body.get("payload")
+        version = body.get("receipt_version")
         if (
             not isinstance(evidence_type, str)
             or not evidence_type.strip()
@@ -91,7 +104,18 @@ def resolve_evidence(
             or not isinstance(payload, dict)
         ):
             return None
-        if digest != evidence_hash(payload):
+
+        if version == _RECEIPT_VERSION:
+            expected = _typed_digest(evidence_type, payload)
+            receipt_version = _RECEIPT_VERSION
+        elif version is None:
+            # Read-only compatibility for evidence receipts created before v2.
+            expected = evidence_hash(payload)
+            receipt_version = "evidence_receipt.v1"
+        else:
+            return None
+
+        if digest != expected:
             return None
         if evidence_ref != f"journal://evidence/{digest}":
             return None
@@ -101,13 +125,12 @@ def resolve_evidence(
                 evidence_type=evidence_type,
                 sha256=digest,
                 evidence_ref=evidence_ref,
+                version=receipt_version,
             ),
             payload=payload,
         ))
     if not matches:
         return None
-    # Duplicate identical evidence is allowed; the newest journal receipt is
-    # returned while the content-addressed ref remains stable.
     return matches[-1]
 
 
