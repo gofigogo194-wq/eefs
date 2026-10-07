@@ -43,7 +43,12 @@ def evaluate_content(
     history_conf = min(len(history) / 6.0, 1.0)
     evidence = round(0.5 * history_conf + 0.5 * baseline_result.baseline.confidence, 6)
 
-    # Ratios can explode when the previous interval has near-zero growth.\n    # Log compression preserves ordering while preventing denominator artifacts.\n    creator_strength = log1p(max(relative, 0.0))\n    momentum_strength = log1p(max(trend.acceleration_ratio, 0.0))\n    raw_strength = 0.5 * creator_strength + 0.5 * momentum_strength\n    score = round(evidence * raw_strength, 6)
+    # Ratios can explode when the previous interval has near-zero growth.
+    # Log compression preserves ordering while preventing denominator artifacts.
+    creator_strength = log1p(max(relative, 0.0))
+    momentum_strength = log1p(max(trend.acceleration_ratio, 0.0))
+    raw_strength = 0.5 * creator_strength + 0.5 * momentum_strength
+    score = round(evidence * raw_strength, 6)
     return IntelligenceSignal(
         latest.content_id,
         latest.creator_id,
