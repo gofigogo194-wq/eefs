@@ -139,7 +139,7 @@ class DecisionJournal:
         event_type: str,
         payload: dict[str, Any],
     ) -> int:
-        body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
         created_at = utc_now()
         prev_hash = str(rows[-1][5]) if rows else _GENESIS_HASH
         event_hash = _hash_event(prev_hash, created_at, event_type, body)
