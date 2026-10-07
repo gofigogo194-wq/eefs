@@ -48,8 +48,14 @@ def momentum(history: list[ContentObservation]) -> MomentumSignal:
 
     previous = velocities[-2]
     latest = velocities[-1]
-    ratio = latest / max(previous, 1e-9)
-    sustained = len(velocities) >= 2 and latest > previous and previous > 0
+    # A zero/near-zero previous interval cannot support a meaningful
+    # multiplicative acceleration claim. Keep the transition observable via
+    # latest_velocity, but fail closed on the ratio itself.
+    if previous <= 1e-6:
+        ratio = 1.0 if latest > 0 else 0.0
+    else:
+        ratio = latest / previous
+    sustained = len(velocities) >= 2 and latest > previous and previous > 1e-6
 
     return MomentumSignal(
         content_id=ordered[-1].content_id,
