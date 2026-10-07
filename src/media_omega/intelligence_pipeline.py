@@ -6,6 +6,7 @@ from math import log1p
 
 from .baseline import relative_to_creator
 from .baseline_cache import CreatorBaselineCache
+from .cohort import PeerCohortPolicy, build_peer_cohort
 from .observations import ContentObservation
 from .timeseries import momentum
 
@@ -28,12 +29,17 @@ class IntelligenceSignal:
     evidence_sufficiency: float
     score: float
     status: str
-    version: str = "intelligence_pipeline.v3"
+    peer_cohort_status: str = "NOT_EVALUATED"
+    peer_count: int = 0
+    peer_cohort_version: str = "peer_cohort.v1"
+    version: str = "intelligence_pipeline.v4"
 
 
 def evaluate_content(
     history: list[ContentObservation],
     baseline_cache: CreatorBaselineCache,
+    peer_observations: list[ContentObservation] | None = None,
+    cohort_policy: PeerCohortPolicy | None = None,
 ) -> IntelligenceSignal:
     if len(history) < 3:
         raise ValueError("intelligence pipeline requires at least 3 snapshots")
@@ -43,6 +49,17 @@ def evaluate_content(
     # Validate momentum before any creator-history API work. Bad temporal
     # evidence must fail closed without spending quota or producing a baseline.
     trend = momentum(ordered)
+    cohort_status = "NOT_EVALUATED"
+    peer_count = 0
+    if cohort_policy is not None:
+        cohort = build_peer_cohort(
+            latest,
+            peer_observations or [],
+            cohort_policy,
+        )
+        cohort_status = cohort.status
+        peer_count = len(cohort.peer_content_ids)
+
     baseline_result = baseline_cache.get(
         latest.creator_id,
         latest.content_id,
@@ -59,6 +76,8 @@ def evaluate_content(
             min(len(history) / 6.0, 1.0),
             0.0,
             "INSUFFICIENT_CREATOR_HISTORY",
+            cohort_status,
+            peer_count,
         )
 
     relative = relative_to_creator(
@@ -86,6 +105,8 @@ def evaluate_content(
         evidence,
         score,
         "READY",
+        cohort_status,
+        peer_count,
     )
 
 
