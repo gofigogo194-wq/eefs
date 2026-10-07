@@ -1,5 +1,6 @@
 import importlib.util
 
+from media_omega.observations import ContentObservation
 from media_omega.orchestrator import Orchestrator
 
 
@@ -16,3 +17,11 @@ def test_duplicate_intelligence_brains_are_physically_retired():
 def test_orchestrator_exposes_only_canonical_live_selector():
     assert hasattr(Orchestrator, "choose_intelligence")
     assert not hasattr(Orchestrator, "choose")
+
+
+def test_legacy_outlier_and_relative_performance_brain_is_retired():
+    import media_omega.observations as observations
+
+    assert not hasattr(observations, "detect_outlier")
+    assert not hasattr(observations, "OutlierSignal")
+    assert not hasattr(ContentObservation, "relative_performance")
