@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from .youtube import YouTubeDataSource, YouTubePayloadError
+from .youtube import YouTubePayloadError
 
 
 @dataclass(frozen=True)
