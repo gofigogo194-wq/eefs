@@ -46,3 +46,14 @@ def test_signal_ranking_is_deterministic():
     fast = evaluate_content([obs("fast", "a", 1, 1000), obs("fast", "a", 2, 2000), obs("fast", "a", 3, 6000)], cache)
     slow = evaluate_content([obs("slow", "b", 1, 1000), obs("slow", "b", 2, 1500), obs("slow", "b", 3, 2100)], cache)
     assert [x.content_id for x in rank_signals([slow, fast])] == ["fast", "slow"]
+
+
+def test_near_zero_previous_velocity_cannot_explode_score():
+    cache = CreatorBaselineCache(Transport())
+    signal = evaluate_content(
+        [obs("edge", "c", 1, 1000), obs("edge", "c", 2, 1000), obs("edge", "c", 3, 1001)],
+        cache,
+    )
+    assert signal.acceleration_ratio > 1000000
+    assert signal.score < 20
+    assert signal.version == "intelligence_pipeline.v2"
