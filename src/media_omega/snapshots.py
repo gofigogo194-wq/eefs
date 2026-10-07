@@ -200,12 +200,17 @@ class SnapshotStore:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             existing = conn.execute(
-                "SELECT payload_sha256,semantic_sha256 FROM snapshots "
+                "SELECT platform,content_id,observed_at,payload,"
+                "payload_sha256,semantic_sha256 FROM snapshots "
                 "WHERE platform=? AND content_id=? AND observed_at=?",
                 (observation.platform, observation.content_id, observed_key),
             ).fetchone()
             if existing is not None:
-                existing_payload_hash, existing_semantic_hash = existing
+                # Idempotence is allowed only after the persisted row itself
+                # passes integrity verification. A tampered row must never be
+                # hidden behind a matching stored semantic hash.
+                self._decode_row(existing)
+                existing_semantic_hash = existing[5]
                 if existing_semantic_hash == semantic_hash:
                     return False
                 raise RuntimeError(
