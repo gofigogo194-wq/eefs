@@ -3,7 +3,7 @@ import sqlite3
 
 import pytest
 
-from media_omega.memory import DecisionJournal
+from media_omega.memory import DecisionJournal, _hash_event
 
 
 def test_journal_builds_verifiable_hash_chain(tmp_path):
@@ -166,9 +166,21 @@ def test_hash_valid_but_non_object_event_payload_fails_integrity(tmp_path):
         rows = journal._rows(db)
         journal._append_verified(db, rows, "FORGED", {"temporary": True})
         forged_id = db.execute("SELECT MAX(id) FROM events").fetchone()[0]
-        db.execute(
-            "UPDATE events SET payload_json='[]' WHERE id=?",
+        row = db.execute(
+            "SELECT created_at,event_type,prev_hash FROM events WHERE id=?",
             (forged_id,),
+        ).fetchone()
+        created_at, event_type, prev_hash = row
+        payload_json = "[]"
+        event_hash = _hash_event(
+            prev_hash,
+            created_at,
+            event_type,
+            payload_json,
+        )
+        db.execute(
+            "UPDATE events SET payload_json=?,event_hash=? WHERE id=?",
+            (payload_json, event_hash, forged_id),
         )
 
     assert journal.verify_chain() is False
