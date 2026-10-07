@@ -62,6 +62,8 @@ def enrich_statistics(
             views=int(stats[video_id]),
             creator_baseline_views=baseline,
             evidence_ref=f"api://youtube/videos/{video_id}@{timestamp}",
+            discovery_query=item.discovery_query,
+            content_format=item.content_format,
         )
         observation.validate()
         record_evidence(journal, "youtube_statistics.v1", observation)
