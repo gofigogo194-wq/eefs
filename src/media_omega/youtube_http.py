@@ -91,6 +91,24 @@ class YouTubeHTTPTransport:
                 raise YouTubePayloadError("invalid videos.list statistics payload") from exc
         return result
 
+    def video_details(self, video_ids: list[str]) -> dict[str, dict[str, object]]:
+        clean = list(dict.fromkeys(x.strip() for x in video_ids if x.strip()))
+        if not clean:
+            return {}
+        if len(clean) > 50:
+            raise ValueError("YouTube videos.list supports at most 50 ids per request")
+        payload = self._get_json("videos", {"part": "snippet,statistics", "id": ",".join(clean)})
+        result: dict[str, dict[str, object]] = {}
+        for item in payload.get("items", []):
+            try:
+                result[str(item["id"])] = {
+                    "views": int(item["statistics"]["viewCount"]),
+                    "published_at": str(item["snippet"]["publishedAt"]),
+                }
+            except (KeyError, TypeError, ValueError) as exc:
+                raise YouTubePayloadError("invalid videos.list details payload") from exc
+        return result
+
     def channel_recent_video_ids(self, channel_id: str) -> list[str]:
         if not channel_id.strip():
             raise ValueError("channel_id is required")
