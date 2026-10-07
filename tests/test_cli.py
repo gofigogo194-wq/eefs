@@ -69,3 +69,24 @@ def test_refresh_cli_reuses_persistent_state(monkeypatch, tmp_path, capsys):
     assert payload["tracked"] == 1
     assert payload["new_snapshots"] == 1
     assert payload["snapshot_total"] == 2
+
+
+def test_report_cli_refuses_to_infer_from_two_snapshots(tmp_path, capsys):
+    from media_omega import cli
+    from media_omega.observations import ContentObservation
+    from media_omega.snapshots import SnapshotStore
+
+    store = SnapshotStore(tmp_path / "snapshots.db")
+    for hour, views in [(1, 100), (2, 200)]:
+        store.append(ContentObservation(
+            "youtube", "abc", "creator",
+            "2026-10-07T00:00:00+00:00",
+            f"2026-10-07T{hour:02d}:00:00+00:00",
+            views, 1000, f"api://youtube/abc/{hour}",
+        ))
+    code = cli.main(["report", "--state-dir", str(tmp_path)])
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ready_count"] == 0
+    assert payload["insufficient_count"] == 1
+    assert payload["opportunities"] == []
