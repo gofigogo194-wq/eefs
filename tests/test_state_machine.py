@@ -288,14 +288,18 @@ def test_history_revalidates_illegal_edge_even_when_journal_hash_is_valid(tmp_pa
     journal = DecisionJournal(tmp_path / "journal.db")
     engine = StateTransitionEngine(journal)
     engine.register("x")
-    journal.append("STATE_TRANSITION", {
+    forged = {
         "entity_id": "x",
         "from_state": "IDEA",
         "to_state": "PUBLISHED",
         "reason": "",
         "evidence": {},
         "contract_version": "state_transition.v1",
-    })
+    }
+    with journal._connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        rows = journal._rows(db)
+        journal._append_verified(db, rows, "STATE_TRANSITION", forged)
     assert journal.verify_chain() is True
     with pytest.raises(RuntimeError, match="illegal edge"):
         engine.current_state("x")
@@ -305,7 +309,7 @@ def test_history_rejects_non_boolean_published_field(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     engine = StateTransitionEngine(journal)
     engine.register("x")
-    journal.append("STATE_TRANSITION", {
+    forged = {
         "entity_id": "x",
         "from_state": "IDEA",
         "to_state": "EVIDENCE_COLLECTED",
@@ -315,6 +319,10 @@ def test_history_rejects_non_boolean_published_field(tmp_path):
             "published": "false",
         },
         "contract_version": "state_transition.v1",
-    })
+    }
+    with journal._connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        rows = journal._rows(db)
+        journal._append_verified(db, rows, "STATE_TRANSITION", forged)
     with pytest.raises(RuntimeError, match="published must be a boolean"):
         engine.current_state("x")
