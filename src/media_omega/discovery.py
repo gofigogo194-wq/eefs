@@ -38,6 +38,14 @@ def select_candidates(items: list[DiscoveryItem], policy: DiscoveryPolicy | None
     seen: set[tuple[str, str]] = set()
     result: list[DiscoveryItem] = []
     for item in items:
+        if not item.platform.strip() or not item.content_id.strip() or not item.creator_id.strip():
+            continue
+        try:
+            published = datetime.fromisoformat(item.published_at.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if published.tzinfo is None:
+            continue
         key = (item.platform, item.content_id)
         if key in seen:
             continue
