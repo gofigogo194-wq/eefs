@@ -41,3 +41,20 @@ def test_persisted_history_drives_momentum_engine(tmp_path):
     assert signal.latest_velocity == 600.0
     assert signal.acceleration_ratio == 3.0
     assert signal.sustained_growth is True
+
+
+def test_latest_uses_absolute_time_not_lexical_offset_order(tmp_path):
+    store = SnapshotStore(tmp_path / "snapshots.db")
+    earlier = ContentObservation(
+        "youtube", "offset-video", "creator",
+        "2026-10-07T00:00:00+00:00", "2026-10-07T12:30:00+07:00",
+        100, 1000, "fixture://earlier",
+    )
+    later = ContentObservation(
+        "youtube", "offset-video", "creator",
+        "2026-10-07T00:00:00+00:00", "2026-10-07T06:00:00+00:00",
+        200, 1000, "fixture://later",
+    )
+    store.append(earlier)
+    store.append(later)
+    assert store.latest("youtube")[0].views == 200
