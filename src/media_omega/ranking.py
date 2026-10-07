@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import log1p
 
 from .intelligence import OpportunityCandidate
 
@@ -20,7 +21,9 @@ class RankedOpportunity:
 def opportunity_score(candidate: OpportunityCandidate) -> float:
     # Confidence gates the strength signals instead of being interpreted as probability.
     outlier = max(candidate.outlier_strength, 0.0)
-    acceleration = max(candidate.acceleration_ratio, 0.0)
+    # Acceleration is a ratio and remains unbounded even after the zero-baseline
+    # guard. Compress it before combining it with bounded outlier_strength.
+    acceleration = log1p(max(candidate.acceleration_ratio, 0.0))
     return round(candidate.confidence * (0.6 * outlier + 0.4 * acceleration), 6)
 
 
