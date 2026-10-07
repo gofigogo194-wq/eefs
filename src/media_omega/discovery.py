@@ -13,6 +13,8 @@ class DiscoveryItem:
     title: str
     published_at: str
     evidence_ref: str
+    discovery_query: str = ""
+    content_format: str = "unknown"
 
 
 class DiscoverySource(Protocol):
