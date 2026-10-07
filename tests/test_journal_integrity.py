@@ -102,3 +102,53 @@ def test_read_all_fails_closed_after_tamper(tmp_path):
         db.execute("UPDATE events SET payload_json=? WHERE id=1", ('{"x":2}',))
     with pytest.raises(RuntimeError, match="hash chain"):
         journal.read_all()
+
+
+def state_payload(entity, from_state, to_state):
+    return {
+        "entity_id": entity,
+        "from_state": from_state,
+        "to_state": to_state,
+        "reason": "",
+        "evidence": {},
+        "contract_version": "state_transition.v1",
+    }
+
+
+def test_generic_append_cannot_bypass_state_transition_cas(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    with pytest.raises(ValueError, match="append_state_transition"):
+        journal.append(
+            "STATE_TRANSITION",
+            state_payload("x", None, "IDEA"),
+        )
+
+
+def test_state_compare_and_append_rejects_duplicate_registration(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    journal.append_state_transition(
+        state_payload("x", None, "IDEA"),
+        expected_from_state=None,
+    )
+    with pytest.raises(RuntimeError, match="changed concurrently"):
+        journal.append_state_transition(
+            state_payload("x", None, "IDEA"),
+            expected_from_state=None,
+        )
+
+
+def test_state_compare_and_append_rejects_stale_expected_state(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    journal.append_state_transition(
+        state_payload("x", None, "IDEA"),
+        expected_from_state=None,
+    )
+    journal.append_state_transition(
+        state_payload("x", "IDEA", "EVIDENCE_COLLECTED"),
+        expected_from_state="IDEA",
+    )
+    with pytest.raises(RuntimeError, match="changed concurrently"):
+        journal.append_state_transition(
+            state_payload("x", "IDEA", "BLOCKED"),
+            expected_from_state="IDEA",
+        )
