@@ -50,7 +50,9 @@ def enrich_statistics(
     for video_id, item in unique.items():
         if video_id not in stats:
             continue
-        baseline = max(float(creator_baselines.get(item.creator_id, 1.0)), 1.0)
+        baseline = float(creator_baselines.get(item.creator_id, 0.0))
+        if baseline < 0:
+            raise ValueError("creator baseline views cannot be negative")
         observation = ContentObservation(
             platform="youtube",
             content_id=video_id,
