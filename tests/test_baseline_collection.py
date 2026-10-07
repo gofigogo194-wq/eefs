@@ -32,6 +32,7 @@ def test_collection_excludes_target_to_avoid_self_contamination():
     assert result.excluded_target is True
     assert result.baseline.median_views_per_hour == 100.0
     assert set(result.source_observed_at) == {OBSERVED}
+    assert all(ref.endswith(f"@{OBSERVED}") for ref in result.source_refs)
 
 
 def test_collection_fails_closed_on_too_little_history():
