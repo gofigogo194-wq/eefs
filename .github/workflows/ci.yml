@@ -10,21 +10,39 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  linux:
+    name: test linux py${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install test tooling
-        run: python -m pip install --upgrade pip pytest
-      - name: Install candidate
-        run: python -m pip install -e .
+      - name: Install candidate and pinned test tooling
+        run: python -m pip install -e ".[test]"
+      - name: Verify installed dependencies
+        run: python -m pip check
+      - name: Compile sources
+        run: python -m compileall -q src
+      - name: Run tests
+        run: python -m pytest -q
+
+  windows:
+    name: test windows py3.14
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: Install candidate and pinned test tooling
+        run: python -m pip install -e ".[test]"
+      - name: Verify installed dependencies
+        run: python -m pip check
       - name: Compile sources
         run: python -m compileall -q src
       - name: Run tests
