@@ -7,7 +7,7 @@ class NoopTransport:
     def channel_recent_video_ids(self, creator_id):
         raise AssertionError("transport must not be called for invalid input")
 
-    def video_statistics(self, ids):
+    def video_details(self, ids):
         raise AssertionError("transport must not be called for invalid input")
 
 
@@ -20,3 +20,9 @@ def test_cache_rejects_empty_creator_before_transport():
     cache = CreatorBaselineCache(NoopTransport())
     with pytest.raises(ValueError, match="creator_id"):
         cache.get("   ")
+
+
+def test_cache_requires_observed_at_before_transport():
+    cache = CreatorBaselineCache(NoopTransport())
+    with pytest.raises(ValueError, match="observed_at"):
+        cache.get("creator")
