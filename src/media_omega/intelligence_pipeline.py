@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import log1p
 
 from .baseline import relative_to_creator
 from .baseline_cache import CreatorBaselineCache
@@ -19,7 +20,7 @@ class IntelligenceSignal:
     evidence_sufficiency: float
     score: float
     status: str
-    version: str = "intelligence_pipeline.v1"
+    version: str = "intelligence_pipeline.v2"
 
 
 def evaluate_content(
