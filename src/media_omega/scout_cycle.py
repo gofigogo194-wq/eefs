@@ -48,6 +48,8 @@ def run_scout_cycle(
                 title=row["title"],
                 published_at=row["published_at"],
                 evidence_ref=row["evidence_ref"],
+                discovery_query=query,
+                content_format="unknown",
             ))
 
     selected = select_candidates(discovered, discovery_policy)
