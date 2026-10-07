@@ -65,3 +65,10 @@ def test_same_payload_under_different_evidence_types_has_distinct_reference(tmp_
     assert a.evidence_ref != b.evidence_ref
     assert evidence_ref_exists(journal, a.evidence_ref)
     assert evidence_ref_exists(journal, b.evidence_ref)
+
+
+def test_evidence_rejects_non_finite_json_numbers(tmp_path):
+    journal = DecisionJournal(tmp_path / "evidence.db")
+    with pytest.raises(ValueError):
+        record_evidence(journal, "measurement.v1", {"score": float("nan")})
+    assert journal.read_all() == []
