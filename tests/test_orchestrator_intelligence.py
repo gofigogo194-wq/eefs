@@ -29,7 +29,7 @@ def test_orchestrator_selects_canonical_intelligence_signal(tmp_path):
     assert winner.content_id == "fast"
     event = journal.read_all()[-1]
     assert event["event_type"] == "INTELLIGENCE_SELECTION"
-    assert event["payload"]["formula_version"] == "intelligence_pipeline.v3"
+    assert event["payload"]["formula_version"] == "intelligence_pipeline.v4"
     assert [x["content_id"] for x in event["payload"]["ranking"]] == ["fast", "slow"]
 
 
