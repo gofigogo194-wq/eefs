@@ -33,6 +33,8 @@ class IntelligenceSignal:
     peer_count: int = 0
     peer_cohort_version: str = "peer_cohort.v1"
     version: str = "intelligence_pipeline.v4"
+    platform: str = "youtube"
+    source_evidence_refs: tuple[str, ...] = ()
 
 
 def evaluate_content(
@@ -65,6 +67,10 @@ def evaluate_content(
         latest.content_id,
         latest.observed_at,
     )
+    source_evidence_refs = tuple(dict.fromkeys(
+        [item.evidence_ref for item in ordered]
+        + list(baseline_result.source_refs)
+    ))
     if baseline_result.baseline is None:
         return IntelligenceSignal(
             latest.content_id,
@@ -78,6 +84,8 @@ def evaluate_content(
             "INSUFFICIENT_CREATOR_HISTORY",
             cohort_status,
             peer_count,
+            platform=latest.platform,
+            source_evidence_refs=source_evidence_refs,
         )
 
     relative = relative_to_creator(
@@ -107,6 +115,8 @@ def evaluate_content(
         "READY",
         cohort_status,
         peer_count,
+        platform=latest.platform,
+        source_evidence_refs=source_evidence_refs,
     )
 
 
