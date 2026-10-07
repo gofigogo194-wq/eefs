@@ -38,9 +38,12 @@ class YouTubeHTTPTransport:
 
     def _get_json(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         query = dict(params)
-        query["key"] = self.config.api_key()
+        api_key = self.config.api_key()
         url = f"{self.base_url}/{endpoint}?{urlencode(query)}"
-        request = Request(url, method="GET", headers={"Accept": "application/json"})
+        request = Request(url, method="GET", headers={
+            "Accept": "application/json",
+            "X-Goog-Api-Key": api_key,
+        })
         with urlopen(request, timeout=self.config.timeout_seconds) as response:
             payload = json.loads(response.read().decode("utf-8"))
         if not isinstance(payload, dict):
