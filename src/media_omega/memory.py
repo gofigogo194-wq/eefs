@@ -26,6 +26,8 @@ class DecisionJournal:
             )""")
 
     def append(self, event_type: str, payload: dict[str, Any]) -> int:
+        if not event_type.strip():
+            raise ValueError("event_type is required")
         body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         with self._connect() as db:
             cur = db.execute(
