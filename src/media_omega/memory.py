@@ -132,25 +132,81 @@ class DecisionJournal:
                 END
             """)
 
+    @staticmethod
+    def _append_verified(
+        db: sqlite3.Connection,
+        rows: list[tuple],
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> int:
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        created_at = utc_now()
+        prev_hash = str(rows[-1][5]) if rows else _GENESIS_HASH
+        event_hash = _hash_event(prev_hash, created_at, event_type, body)
+        cur = db.execute(
+            "INSERT INTO events("
+            "created_at,event_type,payload_json,prev_hash,event_hash"
+            ") VALUES(?,?,?,?,?)",
+            (created_at, event_type, body, prev_hash, event_hash),
+        )
+        return int(cur.lastrowid)
+
     def append(self, event_type: str, payload: dict[str, Any]) -> int:
         if not event_type.strip():
             raise ValueError("event_type is required")
-        body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-        created_at = utc_now()
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             rows = self._rows(db)
             if not _verify_rows(rows):
                 raise RuntimeError("decision journal hash chain is invalid")
-            prev_hash = str(rows[-1][5]) if rows else _GENESIS_HASH
-            event_hash = _hash_event(prev_hash, created_at, event_type, body)
-            cur = db.execute(
-                "INSERT INTO events("
-                "created_at,event_type,payload_json,prev_hash,event_hash"
-                ") VALUES(?,?,?,?,?)",
-                (created_at, event_type, body, prev_hash, event_hash),
+            return self._append_verified(db, rows, event_type, payload)
+
+    def append_state_transition(
+        self,
+        payload: dict[str, Any],
+        expected_from_state: str | None,
+    ) -> int:
+        entity_id = payload.get("entity_id")
+        if not isinstance(entity_id, str) or not entity_id.strip():
+            raise ValueError("state transition entity_id is required")
+        if payload.get("from_state") != expected_from_state:
+            raise ValueError("transition payload from_state does not match expectation")
+
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            rows = self._rows(db)
+            if not _verify_rows(rows):
+                raise RuntimeError("decision journal hash chain is invalid")
+
+            current: str | None = None
+            seen = False
+            for row in rows:
+                if row[2] != "STATE_TRANSITION":
+                    continue
+                try:
+                    event_payload = json.loads(row[3])
+                except json.JSONDecodeError as exc:
+                    raise RuntimeError("invalid state transition payload") from exc
+                if event_payload.get("entity_id") != entity_id:
+                    continue
+                value = event_payload.get("to_state")
+                if not isinstance(value, str):
+                    raise RuntimeError("invalid state transition state")
+                current = value
+                seen = True
+
+            actual = current if seen else None
+            if actual != expected_from_state:
+                raise RuntimeError(
+                    "state changed concurrently: "
+                    f"expected {expected_from_state!r}, found {actual!r}"
+                )
+            return self._append_verified(
+                db,
+                rows,
+                "STATE_TRANSITION",
+                payload,
             )
-            return int(cur.lastrowid)
 
     def verify_chain(self) -> bool:
         with self._connect() as db:
