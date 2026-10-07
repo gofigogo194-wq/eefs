@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from enum import Enum
 from threading import RLock
+from typing import Any
 
-from .evidence import evidence_ref_exists
+from .evidence import EvidenceRecord, resolve_evidence
 from .memory import DecisionJournal
 
 
@@ -71,10 +72,12 @@ _ALLOWED: dict[WorkflowState, frozenset[WorkflowState]] = {
 class TransitionEvidence:
     evidence_refs: tuple[str, ...] = ()
     plan_id: str = ""
-    asset_refs: tuple[str, ...] = ()
+    plan_ref: str = ""
+    asset_manifest_refs: tuple[str, ...] = ()
     verification_ref: str = ""
     policy_decision: str = ""
     schedule_id: str = ""
+    schedule_ref: str = ""
     publication_receipt_ref: str = ""
     published: bool = False
     metric_refs: tuple[str, ...] = ()
@@ -92,6 +95,25 @@ class StateTransition:
     contract_version: str = "state_transition.v1"
 
 
+def _string_tuple(value: Any, field: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise RuntimeError(f"{field} must be a list of strings")
+    result = tuple(value)
+    if any(not isinstance(item, str) for item in result):
+        raise RuntimeError(f"{field} must be a list of strings")
+    return result
+
+
+def _string(value: Any, field: str) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise RuntimeError(f"{field} must be a string")
+    return value
+
+
 class StateTransitionEngine:
     def __init__(self, journal: DecisionJournal) -> None:
         self.journal = journal
@@ -107,12 +129,58 @@ class StateTransitionEngine:
             and event["payload"].get("entity_id") == entity_id
         ]
 
+    def _parse_evidence(self, raw: Any) -> TransitionEvidence:
+        if raw is None:
+            raw = {}
+        if not isinstance(raw, dict):
+            raise RuntimeError("state transition evidence must be an object")
+        published = raw.get("published", False)
+        if not isinstance(published, bool):
+            raise RuntimeError("published must be a boolean")
+        return TransitionEvidence(
+            evidence_refs=_string_tuple(raw.get("evidence_refs"), "evidence_refs"),
+            plan_id=_string(raw.get("plan_id"), "plan_id"),
+            plan_ref=_string(raw.get("plan_ref"), "plan_ref"),
+            asset_manifest_refs=_string_tuple(
+                raw.get("asset_manifest_refs"),
+                "asset_manifest_refs",
+            ),
+            verification_ref=_string(
+                raw.get("verification_ref"),
+                "verification_ref",
+            ),
+            policy_decision=_string(
+                raw.get("policy_decision"),
+                "policy_decision",
+            ),
+            schedule_id=_string(raw.get("schedule_id"), "schedule_id"),
+            schedule_ref=_string(raw.get("schedule_ref"), "schedule_ref"),
+            publication_receipt_ref=_string(
+                raw.get("publication_receipt_ref"),
+                "publication_receipt_ref",
+            ),
+            published=published,
+            metric_refs=_string_tuple(raw.get("metric_refs"), "metric_refs"),
+            learning_version=_string(
+                raw.get("learning_version"),
+                "learning_version",
+            ),
+            learning_evidence_ref=_string(
+                raw.get("learning_evidence_ref"),
+                "learning_evidence_ref",
+            ),
+        )
+
     def history(self, entity_id: str) -> tuple[StateTransition, ...]:
         events = self._events_for(entity_id)
         result: list[StateTransition] = []
         expected_from: WorkflowState | None = None
+
         for index, event in enumerate(events):
             payload = event["payload"]
+            if payload.get("contract_version") != "state_transition.v1":
+                raise RuntimeError("unsupported state transition contract version")
+
             raw_from = payload.get("from_state")
             raw_to = payload.get("to_state")
             try:
@@ -120,43 +188,35 @@ class StateTransitionEngine:
                 to_state = WorkflowState(raw_to)
             except (TypeError, ValueError) as exc:
                 raise RuntimeError("invalid state transition event") from exc
+
+            reason = _string(payload.get("reason"), "reason")
+            evidence = self._parse_evidence(payload.get("evidence"))
+
             if index == 0:
                 if from_state is not None or to_state is not WorkflowState.IDEA:
                     raise RuntimeError("state history must begin at IDEA")
-            elif from_state is not expected_from:
-                raise RuntimeError("state transition history is inconsistent")
-            evidence_raw = payload.get("evidence") or {}
-            try:
-                evidence = TransitionEvidence(
-                    evidence_refs=tuple(evidence_raw.get("evidence_refs", ())),
-                    plan_id=str(evidence_raw.get("plan_id", "")),
-                    asset_refs=tuple(evidence_raw.get("asset_refs", ())),
-                    verification_ref=str(evidence_raw.get("verification_ref", "")),
-                    policy_decision=str(evidence_raw.get("policy_decision", "")),
-                    schedule_id=str(evidence_raw.get("schedule_id", "")),
-                    publication_receipt_ref=str(
-                        evidence_raw.get("publication_receipt_ref", "")
-                    ),
-                    published=bool(evidence_raw.get("published", False)),
-                    metric_refs=tuple(evidence_raw.get("metric_refs", ())),
-                    learning_version=str(evidence_raw.get("learning_version", "")),
-                    learning_evidence_ref=str(
-                        evidence_raw.get("learning_evidence_ref", "")
-                    ),
-                )
-            except (TypeError, ValueError) as exc:
-                raise RuntimeError("invalid state transition evidence") from exc
-            result.append(StateTransition(
+            else:
+                if from_state is not expected_from:
+                    raise RuntimeError("state transition history is inconsistent")
+                if from_state is None or to_state not in _ALLOWED[from_state]:
+                    raise RuntimeError("state transition history contains illegal edge")
+                try:
+                    self._validate_contract(to_state, evidence, reason)
+                except ValueError as exc:
+                    raise RuntimeError(
+                        "state transition history violates evidence contract"
+                    ) from exc
+
+            transition = StateTransition(
                 entity_id=entity_id,
                 from_state=from_state,
                 to_state=to_state,
-                reason=str(payload.get("reason", "")),
+                reason=reason,
                 evidence=evidence,
-                contract_version=str(
-                    payload.get("contract_version", "state_transition.v1")
-                ),
-            ))
+            )
+            result.append(transition)
             expected_from = to_state
+
         return tuple(result)
 
     def current_state(self, entity_id: str) -> WorkflowState | None:
@@ -191,6 +251,8 @@ class StateTransitionEngine:
         evidence: TransitionEvidence | None = None,
         reason: str = "",
     ) -> StateTransition:
+        if not isinstance(to_state, WorkflowState):
+            raise ValueError("to_state must be a WorkflowState")
         evidence = evidence or TransitionEvidence()
         with self._lock:
             current = self.current_state(entity_id)
@@ -218,12 +280,26 @@ class StateTransitionEngine:
             })
             return transition
 
-    def _require_journal_refs(self, refs: tuple[str, ...], label: str) -> None:
+    def _require_records(
+        self,
+        refs: tuple[str, ...],
+        label: str,
+        type_prefix: str | None = None,
+    ) -> tuple[EvidenceRecord, ...]:
         if not refs:
             raise ValueError(f"{label} evidence is required")
+        records: list[EvidenceRecord] = []
         for ref in refs:
-            if not evidence_ref_exists(self.journal, ref):
+            record = resolve_evidence(self.journal, ref)
+            if record is None:
                 raise ValueError(f"{label} evidence is not journal-verified")
+            if (
+                type_prefix is not None
+                and not record.receipt.evidence_type.startswith(type_prefix)
+            ):
+                raise ValueError(f"{label} evidence has wrong type")
+            records.append(record)
+        return tuple(records)
 
     def _validate_contract(
         self,
@@ -232,43 +308,89 @@ class StateTransitionEngine:
         reason: str,
     ) -> None:
         if to_state is WorkflowState.EVIDENCE_COLLECTED:
-            self._require_journal_refs(evidence.evidence_refs, "collected")
+            self._require_records(evidence.evidence_refs, "collected")
+
         elif to_state is WorkflowState.PLANNED:
             if not evidence.plan_id.strip():
                 raise ValueError("plan_id is required")
+            records = self._require_records(
+                (evidence.plan_ref,) if evidence.plan_ref else (),
+                "plan",
+                "creative_plan.",
+            )
+            if records[0].payload.get("plan_id") != evidence.plan_id:
+                raise ValueError("plan evidence does not match plan_id")
+
         elif to_state is WorkflowState.ASSETS_READY:
-            if not evidence.asset_refs or any(not ref.strip() for ref in evidence.asset_refs):
-                raise ValueError("asset_refs are required")
+            records = self._require_records(
+                evidence.asset_manifest_refs,
+                "asset manifest",
+                "asset_manifest.",
+            )
+            for record in records:
+                assets = record.payload.get("assets")
+                if not isinstance(assets, list) or not assets:
+                    raise ValueError("asset manifest must contain assets")
+
         elif to_state is WorkflowState.VERIFIED:
-            self._require_journal_refs(
+            records = self._require_records(
                 (evidence.verification_ref,) if evidence.verification_ref else (),
                 "verification",
+                "verification.",
             )
             if evidence.policy_decision != "ACCEPT":
                 raise ValueError("verified state requires policy ACCEPT")
+            if records[0].payload.get("decision") != "ACCEPT":
+                raise ValueError("verification evidence must record ACCEPT")
+
         elif to_state is WorkflowState.SCHEDULED:
             if not evidence.schedule_id.strip():
                 raise ValueError("schedule_id is required")
+            records = self._require_records(
+                (evidence.schedule_ref,) if evidence.schedule_ref else (),
+                "schedule",
+                "schedule.",
+            )
+            if records[0].payload.get("schedule_id") != evidence.schedule_id:
+                raise ValueError("schedule evidence does not match schedule_id")
+
         elif to_state is WorkflowState.PUBLISHED:
-            self._require_journal_refs(
+            records = self._require_records(
                 (
                     evidence.publication_receipt_ref,
                 ) if evidence.publication_receipt_ref else (),
                 "publication receipt",
+                "publication_receipt.",
             )
             if evidence.published is not True:
                 raise ValueError("published state requires confirmed publication")
+            if records[0].payload.get("published") is not True:
+                raise ValueError(
+                    "publication evidence does not confirm publication"
+                )
+
         elif to_state is WorkflowState.MEASURED:
-            self._require_journal_refs(evidence.metric_refs, "measurement")
+            self._require_records(
+                evidence.metric_refs,
+                "measurement",
+                "measurement.",
+            )
+
         elif to_state is WorkflowState.LEARNED:
             if not evidence.learning_version.strip():
                 raise ValueError("learning_version is required")
-            self._require_journal_refs(
+            records = self._require_records(
                 (
                     evidence.learning_evidence_ref,
                 ) if evidence.learning_evidence_ref else (),
                 "learning",
+                "learning.",
             )
+            if records[0].payload.get("version") != evidence.learning_version:
+                raise ValueError(
+                    "learning evidence does not match learning_version"
+                )
+
         elif to_state in (WorkflowState.REJECTED, WorkflowState.BLOCKED):
             if not reason.strip():
                 raise ValueError("terminal rejection/block reason is required")
