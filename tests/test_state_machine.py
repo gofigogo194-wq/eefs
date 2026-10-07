@@ -9,19 +9,31 @@ from media_omega.state_machine import (
 )
 
 
-def receipt(journal, evidence_type, payload):
-    return record_evidence(journal, evidence_type, payload).evidence_ref
+def receipt(journal, evidence_type, payload, entity="x"):
+    bound = dict(payload)
+    bound.setdefault("entity_id", entity)
+    return record_evidence(journal, evidence_type, bound).evidence_ref
 
 
 def advance_to_assets_ready(journal, engine, entity="x"):
     engine.register(entity)
-    intelligence = receipt(journal, "intelligence_signal.v4", {"content_id": entity})
+    intelligence = receipt(
+        journal,
+        "intelligence_signal.v4",
+        {"content_id": entity},
+        entity,
+    )
     engine.transition(
         entity,
         WorkflowState.EVIDENCE_COLLECTED,
         TransitionEvidence(evidence_refs=(intelligence,)),
     )
-    plan = receipt(journal, "creative_plan.v1", {"plan_id": "plan-1"})
+    plan = receipt(
+        journal,
+        "creative_plan.v1",
+        {"plan_id": "plan-1"},
+        entity,
+    )
     engine.transition(
         entity,
         WorkflowState.PLANNED,
@@ -31,6 +43,7 @@ def advance_to_assets_ready(journal, engine, entity="x"):
         journal,
         "asset_manifest.v1",
         {"assets": ["artifact://video-1"]},
+        entity,
     )
     engine.transition(
         entity,
@@ -46,7 +59,12 @@ def test_full_state_path_is_explicit_and_auditable(tmp_path):
 
     advance_to_assets_ready(journal, engine, entity)
 
-    verification = receipt(journal, "verification.v1", {"decision": "ACCEPT"})
+    verification = receipt(
+        journal,
+        "verification.v1",
+        {"decision": "ACCEPT"},
+        entity,
+    )
     engine.transition(
         entity,
         WorkflowState.VERIFIED,
@@ -60,6 +78,7 @@ def test_full_state_path_is_explicit_and_auditable(tmp_path):
         journal,
         "schedule.v1",
         {"schedule_id": "schedule-1"},
+        entity,
     )
     engine.transition(
         entity,
@@ -74,6 +93,7 @@ def test_full_state_path_is_explicit_and_auditable(tmp_path):
         journal,
         "publication_receipt.v1",
         {"published": True, "remote_id": "remote-1"},
+        entity,
     )
     engine.transition(
         entity,
@@ -84,7 +104,12 @@ def test_full_state_path_is_explicit_and_auditable(tmp_path):
         ),
     )
 
-    metrics = receipt(journal, "measurement.v1", {"views": 123})
+    metrics = receipt(
+        journal,
+        "measurement.v1",
+        {"views": 123},
+        entity,
+    )
     engine.transition(
         entity,
         WorkflowState.MEASURED,
@@ -95,6 +120,7 @@ def test_full_state_path_is_explicit_and_auditable(tmp_path):
         journal,
         "learning.v1",
         {"version": "learning.v1", "candidate": "learning-1"},
+        entity,
     )
     engine.transition(
         entity,
@@ -325,4 +351,66 @@ def test_history_rejects_non_boolean_published_field(tmp_path):
         rows = journal._rows(db)
         journal._append_verified(db, rows, "STATE_TRANSITION", forged)
     with pytest.raises(RuntimeError, match="published must be a boolean"):
+        engine.current_state("x")
+
+
+def test_transition_rejects_evidence_owned_by_another_entity(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    engine = StateTransitionEngine(journal)
+    engine.register("x")
+    foreign = receipt(
+        journal,
+        "intelligence_signal.v4",
+        {"content_id": "foreign"},
+        entity="y",
+    )
+    with pytest.raises(ValueError, match="another entity"):
+        engine.transition(
+            "x",
+            WorkflowState.EVIDENCE_COLLECTED,
+            TransitionEvidence(evidence_refs=(foreign,)),
+        )
+
+
+def test_future_evidence_cannot_retroactively_validate_past_transition(tmp_path):
+    payload = {"entity_id": "x", "content_id": "x"}
+    template = DecisionJournal(tmp_path / "template.db")
+    future_ref = record_evidence(
+        template,
+        "intelligence_signal.v4",
+        payload,
+    ).evidence_ref
+
+    journal = DecisionJournal(tmp_path / "journal.db")
+    engine = StateTransitionEngine(journal)
+    engine.register("x")
+    journal.append_state_transition(
+        {
+            "entity_id": "x",
+            "from_state": "IDEA",
+            "to_state": "EVIDENCE_COLLECTED",
+            "reason": "",
+            "evidence": {
+                "evidence_refs": [future_ref],
+                "plan_id": "",
+                "plan_ref": "",
+                "asset_manifest_refs": [],
+                "verification_ref": "",
+                "policy_decision": "",
+                "schedule_id": "",
+                "schedule_ref": "",
+                "publication_receipt_ref": "",
+                "published": False,
+                "metric_refs": [],
+                "learning_version": "",
+                "learning_evidence_ref": "",
+            },
+            "contract_version": "state_transition.v1",
+        },
+        expected_from_state="IDEA",
+    )
+    record_evidence(journal, "intelligence_signal.v4", payload)
+
+    assert journal.verify_chain() is True
+    with pytest.raises(RuntimeError, match="evidence contract"):
         engine.current_state("x")
