@@ -16,6 +16,10 @@ class CreatorBaselineCache:
     _raw_stats: dict[str, dict[str, int]] = field(default_factory=dict)
     _results: dict[tuple[str, str | None], BaselineCollectionResult] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if self.minimum_samples < 1:
+            raise ValueError("minimum_samples must be positive")
+
     def _load(self, creator_id: str) -> None:
         if creator_id in self._raw_ids:
             return
@@ -27,6 +31,8 @@ class CreatorBaselineCache:
         self._raw_stats[creator_id] = stats
 
     def get(self, creator_id: str, target_content_id: str | None = None) -> BaselineCollectionResult:
+        if not creator_id.strip():
+            raise ValueError("creator_id is required")
         key = (creator_id, target_content_id)
         if key in self._results:
             return self._results[key]
