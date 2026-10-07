@@ -12,6 +12,7 @@ from .discovery import DiscoveryPolicy
 from .runtime import run_readonly_cycle
 from .refresh import refresh_tracked
 from .report import analyze_tracked
+from .intelligence_report import analyze_intelligence
 
 
 def _youtube_probe(video_id: str) -> int:
@@ -98,6 +99,37 @@ def _report(state_dir: str) -> int:
     return 0
 
 
+def _intelligence_report(state_dir: str) -> int:
+    from pathlib import Path
+    root = Path(state_dir)
+    journal = DecisionJournal(root / "journal.db")
+    snapshots = SnapshotStore(root / "snapshots.db")
+    report = analyze_intelligence(snapshots, journal, YouTubeHTTPTransport())
+    print(json.dumps({
+        "ok": True,
+        "mode": "read-only",
+        "required_snapshots": report.required_snapshots,
+        "ready_count": len(report.ready),
+        "insufficient_snapshot_history_count": len(report.insufficient_snapshot_history),
+        "insufficient_creator_history_count": len(report.insufficient_creator_history),
+        "signals": [
+            {
+                "content_id": x.content_id,
+                "creator_id": x.creator_id,
+                "relative_creator_performance": x.relative_creator_performance,
+                "acceleration_ratio": x.acceleration_ratio,
+                "latest_velocity": x.latest_velocity,
+                "baseline_confidence": x.baseline_confidence,
+                "evidence_sufficiency": x.evidence_sufficiency,
+                "score": x.score,
+                "status": x.status,
+                "version": x.version,
+            } for x in report.ready
+        ],
+    }))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="media-omega")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -110,6 +142,8 @@ def main(argv: list[str] | None = None) -> int:
     refresh.add_argument("--state-dir", default=".media-omega")
     report = sub.add_parser("report", help="analyze tracked videos with sufficient history")
     report.add_argument("--state-dir", default=".media-omega")
+    intelligence = sub.add_parser("intelligence", help="rank tracked videos using creator baseline and momentum evidence")
+    intelligence.add_argument("--state-dir", default=".media-omega")
 
     args = parser.parse_args(argv)
     if args.command == "youtube-probe":
@@ -120,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
         return _refresh(args.state_dir)
     if args.command == "report":
         return _report(args.state_dir)
+    if args.command == "intelligence":
+        return _intelligence_report(args.state_dir)
     return 2
 
 
