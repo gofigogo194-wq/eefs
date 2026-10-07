@@ -18,6 +18,8 @@ class ContentObservation:
     evidence_ref: str
 
     def validate(self) -> None:
+        if not self.platform.strip() or not self.content_id.strip() or not self.creator_id.strip():
+            raise ValueError("platform, content_id and creator_id are required")
         if not self.evidence_ref.strip():
             raise ValueError("evidence_ref is required")
         if self.views < 0 or self.creator_baseline_views < 0:
@@ -42,8 +44,9 @@ class ContentObservation:
 
     @property
     def relative_performance(self) -> float:
-        baseline = max(self.creator_baseline_views, 1.0)
-        return self.views / baseline
+        if self.creator_baseline_views <= 0:
+            raise ValueError("creator baseline is unknown")
+        return self.views / self.creator_baseline_views
 
 
 @dataclass(frozen=True)
