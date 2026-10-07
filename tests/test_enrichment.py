@@ -28,13 +28,12 @@ def test_enrichment_creates_auditable_observations(tmp_path):
         [item("a"), item("b")],
         transport,
         journal,
-        {"c": 500},
         "2026-10-07T01:00:00+00:00",
     )
     assert result.requested == 2
     assert result.enriched == 2
     assert result.missing == 0
-    assert observations[0].creator_baseline_views == 500
+    assert observations[0].creator_baseline_views == 0.0
     events = journal.read_all()
     assert [x["event_type"] for x in events].count("EVIDENCE") == 2
     assert events[-1]["event_type"] == "STATISTICS_ENRICHMENT"
@@ -67,7 +66,7 @@ def test_enrichment_batches_youtube_limit(tmp_path):
     assert result.enriched == 101
 
 
-def test_missing_creator_baseline_is_explicitly_unknown_not_fabricated(tmp_path):
+def test_legacy_creator_baseline_field_is_never_fabricated(tmp_path):
     observations, result = enrich_statistics(
         [item("a")],
         FakeStats(),
