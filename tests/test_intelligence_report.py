@@ -16,8 +16,14 @@ class Transport:
     def channel_recent_video_ids(self, creator_id):
         return [f"{creator_id}-a", f"{creator_id}-b", f"{creator_id}-c"]
 
-    def video_statistics(self, ids):
-        return {x: 1000 for x in ids}
+    def video_details(self, ids):
+        return {
+            x: {
+                "views": 1000,
+                "published_at": "2026-10-07T00:00:00+00:00",
+            }
+            for x in ids
+        }
 
 
 def test_report_reads_persisted_history_and_ranks_ready_content(tmp_path):
