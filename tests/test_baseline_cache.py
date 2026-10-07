@@ -30,6 +30,7 @@ def test_same_creator_target_key_fetches_once():
     assert t.history_calls == ["creator"]
     assert cache.size == 1
     assert set(first.source_observed_at) == {OBSERVED}
+    assert all(ref.endswith(f"@{OBSERVED}") for ref in first.source_refs)
 
 
 def test_different_creators_fetch_independently():
