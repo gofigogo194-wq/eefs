@@ -131,6 +131,9 @@ def _intelligence_report(state_dir: str) -> int:
                 "evidence_sufficiency": x.evidence_sufficiency,
                 "score": x.score,
                 "status": x.status,
+                "peer_cohort_status": x.peer_cohort_status,
+                "peer_count": x.peer_count,
+                "peer_cohort_version": x.peer_cohort_version,
                 "version": x.version,
             } for x in report.ready
         ],
