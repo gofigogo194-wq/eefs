@@ -234,14 +234,18 @@ class StateTransitionEngine:
                 reason="",
                 evidence=TransitionEvidence(),
             )
-            self.journal.append("STATE_TRANSITION", {
+            payload = {
                 "entity_id": transition.entity_id,
                 "from_state": None,
                 "to_state": transition.to_state.value,
                 "reason": transition.reason,
                 "evidence": asdict(transition.evidence),
                 "contract_version": transition.contract_version,
-            })
+            }
+            self.journal.append_state_transition(
+                payload,
+                expected_from_state=None,
+            )
             return transition
 
     def transition(
@@ -270,14 +274,18 @@ class StateTransitionEngine:
                 reason=reason.strip(),
                 evidence=evidence,
             )
-            self.journal.append("STATE_TRANSITION", {
+            payload = {
                 "entity_id": transition.entity_id,
                 "from_state": current.value,
                 "to_state": to_state.value,
                 "reason": transition.reason,
                 "evidence": asdict(evidence),
                 "contract_version": transition.contract_version,
-            })
+            }
+            self.journal.append_state_transition(
+                payload,
+                expected_from_state=current.value,
+            )
             return transition
 
     def _require_records(
