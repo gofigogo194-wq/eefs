@@ -35,4 +35,8 @@ def test_full_readonly_cycle_persists_real_shape_snapshots(tmp_path):
     assert result.observations == 2
     assert result.new_snapshots == 2
     assert snapshots.count() == 2
+    persisted = {x.content_id: x for x in snapshots.latest("youtube")}
+    assert persisted["id-ambient"].discovery_query == "ambient"
+    assert persisted["id-robotics"].discovery_query == "robotics"
+    assert persisted["id-ambient"].content_format == "unknown"
     assert journal.read_all()[-1]["event_type"] == "READONLY_CYCLE_RESULT"
