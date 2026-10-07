@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from statistics import median
 from typing import Protocol
 
 from .discovery import DiscoveryItem
@@ -29,10 +28,8 @@ def enrich_statistics(
     items: list[DiscoveryItem],
     transport: StatisticsTransport,
     journal: DecisionJournal,
-    creator_baselines: dict[str, float] | None = None,
     observed_at: str | None = None,
 ) -> tuple[list[ContentObservation], EnrichmentResult]:
-    creator_baselines = creator_baselines or {}
     timestamp = observed_at or datetime.now(timezone.utc).isoformat()
     unique: dict[str, DiscoveryItem] = {}
     for item in items:
@@ -50,9 +47,6 @@ def enrich_statistics(
     for video_id, item in unique.items():
         if video_id not in stats:
             continue
-        baseline = float(creator_baselines.get(item.creator_id, 0.0))
-        if baseline < 0:
-            raise ValueError("creator baseline views cannot be negative")
         observation = ContentObservation(
             platform="youtube",
             content_id=video_id,
@@ -60,7 +54,7 @@ def enrich_statistics(
             published_at=item.published_at,
             observed_at=timestamp,
             views=int(stats[video_id]),
-            creator_baseline_views=baseline,
+            creator_baseline_views=0.0,
             evidence_ref=f"api://youtube/videos/{video_id}@{timestamp}",
             discovery_query=item.discovery_query,
             content_format=item.content_format,
