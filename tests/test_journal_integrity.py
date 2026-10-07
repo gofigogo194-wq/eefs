@@ -1,0 +1,71 @@
+import json
+import sqlite3
+
+import pytest
+
+from media_omega.memory import DecisionJournal
+
+
+def test_journal_builds_verifiable_hash_chain(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    assert journal.verify_chain() is True
+    assert journal.chain_head() == ""
+
+    journal.append("A", {"x": 1})
+    first_head = journal.chain_head()
+    assert len(first_head) == 64
+    assert journal.verify_chain() is True
+
+    journal.append("B", {"y": 2})
+    assert journal.chain_head() != first_head
+    assert journal.verify_chain() is True
+
+
+def test_database_blocks_update_and_delete_of_events(tmp_path):
+    path = tmp_path / "journal.db"
+    journal = DecisionJournal(path)
+    journal.append("A", {"x": 1})
+
+    with sqlite3.connect(path) as db:
+        with pytest.raises(sqlite3.DatabaseError, match="append-only"):
+            db.execute("UPDATE events SET event_type='MUTATED' WHERE id=1")
+
+    with sqlite3.connect(path) as db:
+        with pytest.raises(sqlite3.DatabaseError, match="append-only"):
+            db.execute("DELETE FROM events WHERE id=1")
+
+    assert journal.verify_chain() is True
+
+
+def test_legacy_journal_is_migrated_without_losing_events(tmp_path):
+    path = tmp_path / "legacy.db"
+    with sqlite3.connect(path) as db:
+        db.execute("""CREATE TABLE events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            payload_json TEXT NOT NULL
+        )""")
+        db.execute(
+            "INSERT INTO events(created_at,event_type,payload_json) VALUES(?,?,?)",
+            ("2026-10-07T00:00:00+00:00", "LEGACY", json.dumps({"x": 1})),
+        )
+
+    journal = DecisionJournal(path)
+    assert [x["event_type"] for x in journal.read_all()] == ["LEGACY"]
+    assert journal.verify_chain() is True
+    assert len(journal.chain_head()) == 64
+
+
+def test_hash_chain_detects_payload_tamper_when_guards_are_bypassed(tmp_path):
+    path = tmp_path / "journal.db"
+    journal = DecisionJournal(path)
+    journal.append("A", {"x": 1})
+    journal.append("B", {"y": 2})
+    assert journal.verify_chain() is True
+
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER events_append_only_update")
+        db.execute("UPDATE events SET payload_json=? WHERE id=1", ('{"x":999}',))
+
+    assert journal.verify_chain() is False
