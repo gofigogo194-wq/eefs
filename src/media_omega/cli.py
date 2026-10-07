@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from .youtube_http import YouTubeHTTPTransport
 from .memory import DecisionJournal
@@ -13,6 +14,14 @@ from .runtime import run_readonly_cycle
 from .refresh import refresh_tracked
 from .report import analyze_tracked
 from .intelligence_report import analyze_intelligence
+
+
+def _existing_state_root(state_dir: str) -> Path:
+    root = Path(state_dir)
+    required = (root / "journal.db", root / "snapshots.db")
+    if not root.is_dir() or not all(path.is_file() for path in required):
+        raise FileNotFoundError(f"MEDIA Ω state not found at {root.resolve()}")
+    return root
 
 
 def _youtube_probe(video_id: str) -> int:
@@ -57,8 +66,7 @@ def _scout(queries: list[str], state_dir: str) -> int:
 
 
 def _refresh(state_dir: str) -> int:
-    from pathlib import Path
-    root = Path(state_dir)
+    root = _existing_state_root(state_dir)
     journal = DecisionJournal(root / "journal.db")
     snapshots = SnapshotStore(root / "snapshots.db")
     result = refresh_tracked(snapshots, YouTubeHTTPTransport(), journal)
@@ -75,8 +83,7 @@ def _refresh(state_dir: str) -> int:
 
 
 def _report(state_dir: str) -> int:
-    from pathlib import Path
-    root = Path(state_dir)
+    root = _existing_state_root(state_dir)
     journal = DecisionJournal(root / "journal.db")
     snapshots = SnapshotStore(root / "snapshots.db")
     report = analyze_tracked(snapshots, journal)
@@ -100,8 +107,7 @@ def _report(state_dir: str) -> int:
 
 
 def _intelligence_report(state_dir: str) -> int:
-    from pathlib import Path
-    root = Path(state_dir)
+    root = _existing_state_root(state_dir)
     journal = DecisionJournal(root / "journal.db")
     snapshots = SnapshotStore(root / "snapshots.db")
     report = analyze_intelligence(snapshots, journal, YouTubeHTTPTransport())
