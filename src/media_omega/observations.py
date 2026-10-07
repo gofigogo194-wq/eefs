@@ -36,7 +36,10 @@ class ContentObservation:
         self.validate()
         published = datetime.fromisoformat(self.published_at.replace("Z", "+00:00"))
         observed = datetime.fromisoformat(self.observed_at.replace("Z", "+00:00"))
-        return max((observed - published).total_seconds() / 3600.0, 1.0 / 60.0)
+        age_seconds = (observed - published).total_seconds()
+        if age_seconds < 60.0:
+            raise ValueError("content age is too short for reliable rate")
+        return age_seconds / 3600.0
 
     @property
     def views_per_hour(self) -> float:

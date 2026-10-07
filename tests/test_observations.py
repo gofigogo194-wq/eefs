@@ -25,3 +25,12 @@ def test_identity_fields_are_required(field):
 def test_unknown_creator_baseline_fails_closed():
     with pytest.raises(ValueError, match="baseline is unknown"):
         _ = make(creator_baseline_views=0).relative_performance
+
+
+def test_sub_minute_content_age_fails_closed_instead_of_clamping_rate():
+    observation = make(
+        published_at="2026-10-07T00:59:30+00:00",
+        observed_at="2026-10-07T01:00:00+00:00",
+    )
+    with pytest.raises(ValueError, match="age is too short"):
+        _ = observation.views_per_hour
