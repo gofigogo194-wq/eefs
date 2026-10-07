@@ -4,6 +4,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from math import isfinite
 from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -16,6 +17,14 @@ class YouTubeReadOnlyConfig:
     api_key_env: str = "YOUTUBE_API_KEY"
     timeout_seconds: float = 10.0
     max_results: int = 25
+
+    def validate(self) -> None:
+        if not self.api_key_env.strip():
+            raise ValueError("api_key_env is required")
+        if not isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be finite and positive")
+        if not 1 <= self.max_results <= 50:
+            raise ValueError("max_results must be between 1 and 50")
 
     def api_key(self) -> str:
         value = os.environ.get(self.api_key_env, "").strip()
@@ -35,6 +44,7 @@ class YouTubeHTTPTransport:
 
     def __init__(self, config: YouTubeReadOnlyConfig | None = None):
         self.config = config or YouTubeReadOnlyConfig()
+        self.config.validate()
 
     def _get_json(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         query = dict(params)
@@ -58,7 +68,7 @@ class YouTubeHTTPTransport:
             "q": query,
             "type": "video",
             "order": "date",
-            "maxResults": min(max(self.config.max_results, 1), 50),
+            "maxResults": self.config.max_results,
         })
         result: list[dict[str, str]] = []
         for item in payload.get("items", []):
