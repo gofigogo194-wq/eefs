@@ -1,4 +1,6 @@
 from dataclasses import asdict
+import json
+import sqlite3
 
 import pytest
 
@@ -326,3 +328,40 @@ def test_unexpected_verifier_exception_does_not_advance_state(
 
     assert engine.states.current_state(plan.opportunity_id) is WorkflowState.ASSETS_READY
     assert "verification.v1" not in evidence_types(journal)
+
+
+
+def test_corrupted_manifest_evidence_fails_closed_before_verification(tmp_path):
+    journal, engine, plan = planned_engine(tmp_path)
+    engine.create_assets(plan, Creator((make_asset(tmp_path),)))
+
+    manifest_event = next(
+        event
+        for event in journal.read_all()
+        if event["event_type"] == "EVIDENCE"
+        and event["payload"].get("evidence_type") == "asset_manifest.v2"
+    )
+
+    with sqlite3.connect(journal.path) as db:
+        db.execute("DROP TRIGGER events_append_only_update")
+        raw = db.execute(
+            "SELECT payload_json FROM events WHERE id=?",
+            (manifest_event["id"],),
+        ).fetchone()[0]
+        payload = json.loads(raw)
+        payload["payload"]["assets"][0]["sha256"] = "0" * 64
+        db.execute(
+            "UPDATE events SET payload_json=? WHERE id=?",
+            (
+                json.dumps(
+                    payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                manifest_event["id"],
+            ),
+        )
+
+    assert journal.verify_chain() is False
+    with pytest.raises(RuntimeError, match="hash chain"):
+        engine.verify_assets(plan)
