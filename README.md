@@ -10,7 +10,9 @@ The first proving ground is RELAX SABAI MUSIK, but the architecture is not tied 
 
 ## Operating loop
 
-DISCOVER → EVALUATE → PLAN → CREATE → VERIFY → PUBLISH → MEASURE → LEARN
+DISCOVER → OBSERVE → COMPARE → SELECT → PLAN + VERIFY → PUBLISH → MEASURE + LEARN
+
+The system deliberately keeps one live path for each responsibility. Reliability should come from explicit contracts, restart-safe persistence, and tests — not from adding duplicate agents, scores, or pipelines. See `docs/SIMPLE_FLOW.md`.
 
 ## Non-negotiable invariants
 
@@ -32,7 +34,7 @@ The Candidate currently proves the read-only path:
 
 YouTube discovery → persisted observations → temporal momentum → age-normalized creator baseline v2 → peer-cohort diagnostics → IntelligenceSignal v4 → Orchestrator selection → journal evidence receipt → EVIDENCE_COLLECTED state.
 
-The former duplicate intelligence/scoring paths have been retired. Workflow transitions are enforced by a centralized state engine. The decision journal uses SQLite append-only guards plus a tamper-evident hash chain. Evidence references are content-addressed and bind both evidence type and payload.
+The former duplicate intelligence/scoring, scout, baseline-collection, momentum-report, generic-source, and stale YouTube wrapper paths have been retired. Workflow transitions are enforced by a centralized state engine. The decision journal uses SQLite append-only guards plus a tamper-evident hash chain. Evidence references are content-addressed and bind both evidence type and payload.
 
 Candidate CI currently gates Python 3.11–3.14 on Linux and Python 3.14 on Windows with pinned pytest.
 
