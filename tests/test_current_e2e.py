@@ -43,7 +43,15 @@ class Transport:
         }
 
 
-def test_current_canonical_path_reaches_planned_without_publish(tmp_path):
+class Creator:
+    name = "fixture-creator"
+
+    def create(self, plan, idempotency_key):
+        assert idempotency_key == plan.id
+        return ("artifact://video", "artifact://thumbnail")
+
+
+def test_current_canonical_path_reaches_assets_ready_without_publish(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     snapshots = SnapshotStore(tmp_path / "snapshots.db")
     transport = Transport()
@@ -105,9 +113,28 @@ def test_current_canonical_path_reaches_planned_without_publish(tmp_path):
         is WorkflowState.PLANNED
     )
 
+    manifest = orchestrator.create_assets(
+        CreativePlan(
+            opportunity_id="youtube:target",
+            platform="youtube",
+            format="long-form",
+            title="Original ambient concept",
+            original=True,
+            rights_confirmed=True,
+            estimated_cost=1.0,
+            id="plan-target",
+        ),
+        Creator(),
+    )
+    assert manifest.assets == ("artifact://video", "artifact://thumbnail")
+    assert (
+        orchestrator.states.current_state("youtube:target")
+        is WorkflowState.ASSETS_READY
+    )
+
     event_types = [event["event_type"] for event in journal.read_all()]
     assert "INTELLIGENCE_SELECTION" in event_types
-    assert event_types.count("STATE_TRANSITION") == 3
+    assert event_types.count("STATE_TRANSITION") == 4
     assert "PLAN_POLICY_DECISION" in event_types
     assert "DRY_RUN_PUBLICATION" not in event_types
     assert journal.verify_chain() is True
