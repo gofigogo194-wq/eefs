@@ -15,6 +15,32 @@ def receipt(journal, evidence_type, payload, entity="x"):
     return record_evidence(journal, evidence_type, bound).evidence_ref
 
 
+def asset_record(
+    asset_id="video",
+    path="/fixture/video.mp4",
+    media_type="video/mp4",
+):
+    return {
+        "asset_id": asset_id,
+        "path": path,
+        "media_type": media_type,
+        "sha256": "a" * 64,
+        "size_bytes": 1,
+        "provenance": f"fixture://{asset_id}",
+    }
+
+
+def manifest_payload(plan_id, assets=None, provider="fixture"):
+    if assets is None:
+        assets = [asset_record()]
+    return {
+        "plan_id": plan_id,
+        "assets": assets,
+        "provider": provider,
+        "version": "asset_manifest.v2",
+    }
+
+
 def advance_to_assets_ready(journal, engine, entity="x"):
     engine.register(entity)
     intelligence = receipt(
@@ -41,12 +67,8 @@ def advance_to_assets_ready(journal, engine, entity="x"):
     )
     assets = receipt(
         journal,
-        "asset_manifest.v1",
-        {
-            "plan_id": "plan-1",
-            "assets": ["artifact://video-1"],
-            "provider": "fixture",
-        },
+        "asset_manifest.v2",
+        manifest_payload("plan-1"),
         entity,
     )
     engine.transition(
@@ -231,8 +253,8 @@ def test_assets_ready_requires_manifest_with_assets(tmp_path):
     )
     empty_manifest = receipt(
         journal,
-        "asset_manifest.v1",
-        {"plan_id": "p", "assets": [], "provider": "fixture"},
+        "asset_manifest.v2",
+        manifest_payload("p", assets=[]),
     )
     with pytest.raises(ValueError, match="contain assets"):
         engine.transition(
@@ -497,12 +519,8 @@ def test_assets_ready_rejects_manifest_for_different_admitted_plan(tmp_path):
     )
     manifest = receipt(
         journal,
-        "asset_manifest.v1",
-        {
-            "plan_id": "p2",
-            "assets": ["artifact://x"],
-            "provider": "fixture",
-        },
+        "asset_manifest.v2",
+        manifest_payload("p2"),
     )
     with pytest.raises(ValueError, match="admitted plan"):
         engine.transition(
@@ -537,8 +555,8 @@ def test_assets_ready_rejects_invalid_manifest_semantics(tmp_path):
     )
     bad_manifest = receipt(
         journal,
-        "asset_manifest.v1",
-        {"plan_id": "p", "assets": ["artifact://x"], "provider": ""},
+        "asset_manifest.v2",
+        manifest_payload("p", provider=""),
     )
     with pytest.raises(ValueError, match="provider"):
         engine.transition(
@@ -605,13 +623,19 @@ def test_assets_ready_requires_one_canonical_manifest(tmp_path):
     )
     first = receipt(
         journal,
-        "asset_manifest.v1",
-        {"plan_id": "p", "assets": ["artifact://a"], "provider": "fixture"},
+        "asset_manifest.v2",
+        manifest_payload(
+            "p",
+            assets=[asset_record("a", "/fixture/a.mp4")],
+        ),
     )
     second = receipt(
         journal,
-        "asset_manifest.v1",
-        {"plan_id": "p", "assets": ["artifact://b"], "provider": "fixture"},
+        "asset_manifest.v2",
+        manifest_payload(
+            "p",
+            assets=[asset_record("b", "/fixture/b.mp4")],
+        ),
     )
     with pytest.raises(ValueError, match="exactly one"):
         engine.transition(
@@ -630,12 +654,16 @@ def test_verified_must_bind_to_exact_assets_ready_manifest(tmp_path):
     admitted_ref = advance_to_assets_ready(journal, engine)
     alternate_ref = receipt(
         journal,
-        "asset_manifest.v1",
-        {
-            "plan_id": "plan-1",
-            "assets": ["artifact://alternate"],
-            "provider": "fixture",
-        },
+        "asset_manifest.v2",
+        manifest_payload(
+            "plan-1",
+            assets=[
+                asset_record(
+                    "alternate",
+                    "/fixture/alternate.mp4",
+                )
+            ],
+        ),
     )
     verification = receipt(
         journal,
@@ -658,3 +686,48 @@ def test_verified_must_bind_to_exact_assets_ready_manifest(tmp_path):
             ),
         )
     assert admitted_ref != alternate_ref
+
+
+
+def test_new_assets_ready_transition_rejects_legacy_manifest_v1(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    engine = StateTransitionEngine(journal)
+    engine.register("x")
+    intel = receipt(
+        journal,
+        "intelligence_pipeline.v4",
+        {"content_id": "x"},
+    )
+    engine.transition(
+        "x",
+        WorkflowState.EVIDENCE_COLLECTED,
+        TransitionEvidence(evidence_refs=(intel,)),
+    )
+    plan_ref = receipt(
+        journal,
+        "creative_plan.v1",
+        {"plan_id": "p", "policy_decision": "ACCEPT"},
+    )
+    engine.transition(
+        "x",
+        WorkflowState.PLANNED,
+        TransitionEvidence(plan_id="p", plan_ref=plan_ref),
+    )
+    legacy = receipt(
+        journal,
+        "asset_manifest.v1",
+        {
+            "plan_id": "p",
+            "assets": ["artifact://legacy"],
+            "provider": "legacy",
+        },
+    )
+    with pytest.raises(ValueError, match="read-only"):
+        engine.transition(
+            "x",
+            WorkflowState.ASSETS_READY,
+            TransitionEvidence(
+                plan_id="p",
+                asset_manifest_refs=(legacy,),
+            ),
+        )
