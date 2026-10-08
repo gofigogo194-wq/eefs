@@ -53,7 +53,7 @@ def enrich_statistics(
             creator_id=item.creator_id,
             published_at=item.published_at,
             observed_at=timestamp,
-            views=int(stats[video_id]),
+            views=stats[video_id],
             creator_baseline_views=0.0,
             evidence_ref=f"api://youtube/videos/{video_id}@{timestamp}",
             discovery_query=item.discovery_query,
