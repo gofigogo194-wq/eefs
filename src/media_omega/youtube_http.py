@@ -70,6 +70,12 @@ class YouTubeHTTPTransport:
         return items
 
     @staticmethod
+    def _required_text(value: Any, field: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise YouTubePayloadError(f"{field} must be a non-empty string")
+        return value.strip()
+
+    @staticmethod
     def _view_count(value: Any) -> int:
         try:
             views = int(value)
@@ -92,15 +98,34 @@ class YouTubeHTTPTransport:
         result: list[dict[str, str]] = []
         for item in self._items(payload):
             try:
-                video_id = str(item["id"]["videoId"])
+                identity = item["id"]
                 snippet = item["snippet"]
+                if not isinstance(identity, dict) or not isinstance(snippet, dict):
+                    raise YouTubePayloadError(
+                        "invalid search.list discovery payload"
+                    )
+                video_id = self._required_text(
+                    identity.get("videoId"),
+                    "videoId",
+                )
+                creator_id = self._required_text(
+                    snippet.get("channelId"),
+                    "channelId",
+                )
+                title = self._required_text(snippet.get("title"), "title")
+                published_at = self._required_text(
+                    snippet.get("publishedAt"),
+                    "publishedAt",
+                )
                 result.append({
                     "content_id": video_id,
-                    "creator_id": str(snippet["channelId"]),
-                    "title": str(snippet["title"]),
-                    "published_at": str(snippet["publishedAt"]),
+                    "creator_id": creator_id,
+                    "title": title,
+                    "published_at": published_at,
                     "evidence_ref": f"api://youtube/search/{video_id}",
                 })
+            except YouTubePayloadError:
+                raise
             except (KeyError, TypeError) as exc:
                 raise YouTubePayloadError("invalid search.list discovery payload") from exc
         return result
@@ -172,7 +197,18 @@ class YouTubeHTTPTransport:
         })
         ids: list[str] = []
         for item in self._items(payload):
-            video_id = item.get("id", {}).get("videoId")
-            if video_id:
-                ids.append(str(video_id))
+            identity = item.get("id")
+            if not isinstance(identity, dict):
+                raise YouTubePayloadError(
+                    "invalid search.list channel payload"
+                )
+            video_id = self._required_text(
+                identity.get("videoId"),
+                "videoId",
+            )
+            if video_id in ids:
+                raise YouTubePayloadError(
+                    "search.list returned a duplicate video id"
+                )
+            ids.append(video_id)
         return ids
