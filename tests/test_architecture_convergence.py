@@ -39,3 +39,7 @@ def test_stale_youtube_observation_adapter_is_retired():
     import media_omega.youtube as youtube
 
     assert not hasattr(youtube, "YouTubeDataSource")
+
+
+def test_duplicate_momentum_report_pipeline_is_retired():
+    assert importlib.util.find_spec("media_omega.report") is None

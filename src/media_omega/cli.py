@@ -12,7 +12,6 @@ from .scout import ScoutPolicy, ScoutTopic
 from .discovery import DiscoveryPolicy
 from .runtime import run_readonly_cycle
 from .refresh import refresh_tracked
-from .report import analyze_tracked
 from .intelligence_report import analyze_intelligence
 
 
@@ -82,31 +81,6 @@ def _refresh(state_dir: str) -> int:
     return 0
 
 
-def _report(state_dir: str) -> int:
-    root = _existing_state_root(state_dir)
-    journal = DecisionJournal(root / "journal.db")
-    snapshots = SnapshotStore(root / "snapshots.db")
-    report = analyze_tracked(snapshots, journal)
-    print(json.dumps({
-        "ok": True,
-        "required_snapshots": report.required_snapshots,
-        "ready_count": len(report.ready),
-        "insufficient_count": len(report.insufficient_history),
-        "unreliable_interval_count": len(report.unreliable_interval),
-        "opportunities": [
-            {
-                "content_id": item.content_id,
-                "samples": item.sample_count,
-                "latest_velocity": item.latest_velocity,
-                "acceleration_ratio": item.acceleration_ratio,
-                "sustained_growth": item.sustained_growth,
-            }
-            for item in report.ready
-        ],
-    }))
-    return 0
-
-
 def _intelligence_report(state_dir: str) -> int:
     root = _existing_state_root(state_dir)
     journal = DecisionJournal(root / "journal.db")
@@ -153,8 +127,6 @@ def main(argv: list[str] | None = None) -> int:
     scout.add_argument("--state-dir", default=".media-omega")
     refresh = sub.add_parser("refresh", help="refresh statistics for previously tracked YouTube videos")
     refresh.add_argument("--state-dir", default=".media-omega")
-    report = sub.add_parser("report", help="analyze tracked videos with sufficient history")
-    report.add_argument("--state-dir", default=".media-omega")
     intelligence = sub.add_parser("intelligence", help="rank tracked videos using creator baseline and momentum evidence")
     intelligence.add_argument("--state-dir", default=".media-omega")
 
@@ -165,8 +137,6 @@ def main(argv: list[str] | None = None) -> int:
         return _scout(args.query, args.state_dir)
     if args.command == "refresh":
         return _refresh(args.state_dir)
-    if args.command == "report":
-        return _report(args.state_dir)
     if args.command == "intelligence":
         return _intelligence_report(args.state_dir)
     return 2
