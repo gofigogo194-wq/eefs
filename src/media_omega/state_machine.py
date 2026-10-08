@@ -394,8 +394,18 @@ class StateTransitionEngine:
                 if record.payload.get("plan_id") != evidence.plan_id:
                     raise ValueError("asset manifest does not match plan_id")
                 assets = record.payload.get("assets")
+                provider = record.payload.get("provider")
                 if not isinstance(assets, list) or not assets:
                     raise ValueError("asset manifest must contain assets")
+                if any(
+                    not isinstance(asset, str) or not asset.strip()
+                    for asset in assets
+                ):
+                    raise ValueError("asset manifest assets must be non-empty strings")
+                if len(set(assets)) != len(assets):
+                    raise ValueError("asset manifest assets must be unique")
+                if not isinstance(provider, str) or not provider.strip():
+                    raise ValueError("asset manifest provider is required")
 
         elif to_state is WorkflowState.VERIFIED:
             records = self._require_records(
