@@ -62,7 +62,7 @@ Peer cohort v1 tracks query provenance, platform, content format when known, and
 Current minimal implementation. A selected opportunity can admit exactly one CreativePlan. The plan must pass the configured policy gate, is journaled as typed evidence, and then advances to PLANNED. A failed plan attempt leaves the selected opportunity retryable. Exact replay is idempotent; a changed plan cannot silently replace it. This gate validates plan declarations and budget/platform rules, not the final generated assets.
 
 ### 5. Creator Pipeline
-Future provider-neutral interfaces for text, image, video, audio, voice, editing, captions, thumbnails, and packaging.
+Current minimal contract: one admitted plan is sent to one creator adapter with the plan id as an idempotency key. The adapter returns non-empty unique asset references. Those references are bound to the admitted plan in one typed asset manifest before ASSETS_READY is allowed. Current CI uses a deterministic fake creator; no production generation provider is claimed yet.
 
 ### 6. Verification Gate
 Current policy checks fail closed on originality/rights by default, required plan identity, platform allowance, and finite budget limits. Future media verification must produce typed evidence before VERIFIED can be entered.
@@ -90,7 +90,7 @@ Higher autonomy is earned through target tests and explicit capability grants; i
 
 The current deterministic E2E test covers:
 
-Scout/discovery → enrichment → snapshots → two refreshes → creator baseline → momentum → Intelligence v4 → Orchestrator → typed evidence receipt → one CreativePlan → policy check → PLANNED.
+Scout/discovery → enrichment → snapshots → two refreshes → creator baseline → momentum → Intelligence v4 → Orchestrator → typed evidence receipt → one CreativePlan → policy check → one creator adapter → typed asset manifest → ASSETS_READY.
 
 Candidate CI gates:
 - Linux: Python 3.11, 3.12, 3.13, 3.14;
