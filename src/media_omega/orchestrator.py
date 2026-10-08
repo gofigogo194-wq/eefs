@@ -36,6 +36,16 @@ class Orchestrator:
             raise ValueError("signal platform and content_id are required")
         return f"{signal.platform}:{signal.content_id}"
 
+    def _require_reported_signal(self, signal: IntelligenceSignal) -> None:
+        expected = asdict(signal)
+        for event in reversed(self.journal.read_all()):
+            if event["event_type"] != "INTELLIGENCE_REPORT":
+                continue
+            ready = event["payload"].get("ready")
+            if isinstance(ready, list) and expected in ready:
+                return
+        raise ValueError("intelligence signal was not produced by a journaled report")
+
     def choose_intelligence(self, signals: list[IntelligenceSignal]) -> IntelligenceSignal:
         if not signals:
             raise ValueError("no intelligence signals supplied")
@@ -45,6 +55,7 @@ class Orchestrator:
         winner = ranked[0]
         if not winner.source_evidence_refs:
             raise ValueError("selected intelligence signal lacks source provenance")
+        self._require_reported_signal(winner)
 
         entity_id = self._entity_id(winner)
         current = self.states.current_state(entity_id)
