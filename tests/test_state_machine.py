@@ -19,7 +19,7 @@ def advance_to_assets_ready(journal, engine, entity="x"):
     engine.register(entity)
     intelligence = receipt(
         journal,
-        "intelligence_signal.v4",
+        "intelligence_pipeline.v4",
         {"content_id": entity},
         entity,
     )
@@ -31,7 +31,7 @@ def advance_to_assets_ready(journal, engine, entity="x"):
     plan = receipt(
         journal,
         "creative_plan.v1",
-        {"plan_id": "plan-1"},
+        {"plan_id": "plan-1", "policy_decision": "ACCEPT"},
         entity,
     )
     engine.transition(
@@ -57,6 +57,7 @@ def advance_to_assets_ready(journal, engine, entity="x"):
             asset_manifest_refs=(assets,),
         ),
     )
+    return assets
 
 
 def test_full_state_path_is_explicit_and_auditable(tmp_path):
@@ -64,18 +65,24 @@ def test_full_state_path_is_explicit_and_auditable(tmp_path):
     engine = StateTransitionEngine(journal)
     entity = "youtube:video-1"
 
-    advance_to_assets_ready(journal, engine, entity)
+    asset_ref = advance_to_assets_ready(journal, engine, entity)
 
     verification = receipt(
         journal,
         "verification.v1",
-        {"decision": "ACCEPT"},
+        {
+            "decision": "ACCEPT",
+            "plan_id": "plan-1",
+            "asset_manifest_ref": asset_ref,
+        },
         entity,
     )
     engine.transition(
         entity,
         WorkflowState.VERIFIED,
         TransitionEvidence(
+            plan_id="plan-1",
+            asset_manifest_refs=(asset_ref,),
             verification_ref=verification,
             policy_decision="ACCEPT",
         ),
@@ -176,7 +183,7 @@ def test_planned_requires_typed_plan_evidence_matching_id(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     engine = StateTransitionEngine(journal)
     engine.register("x")
-    intel = receipt(journal, "intelligence_signal.v4", {"x": 1})
+    intel = receipt(journal, "intelligence_pipeline.v4", {"x": 1})
     engine.transition(
         "x",
         WorkflowState.EVIDENCE_COLLECTED,
@@ -189,7 +196,11 @@ def test_planned_requires_typed_plan_evidence_matching_id(tmp_path):
             WorkflowState.PLANNED,
             TransitionEvidence(plan_id="plan-1", plan_ref=wrong_type),
         )
-    wrong_id = receipt(journal, "creative_plan.v1", {"plan_id": "other"})
+    wrong_id = receipt(
+        journal,
+        "creative_plan.v1",
+        {"plan_id": "other", "policy_decision": "ACCEPT"},
+    )
     with pytest.raises(ValueError, match="does not match"):
         engine.transition(
             "x",
@@ -202,13 +213,17 @@ def test_assets_ready_requires_manifest_with_assets(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     engine = StateTransitionEngine(journal)
     engine.register("x")
-    intel = receipt(journal, "intelligence_signal.v4", {"x": 1})
+    intel = receipt(journal, "intelligence_pipeline.v4", {"x": 1})
     engine.transition(
         "x",
         WorkflowState.EVIDENCE_COLLECTED,
         TransitionEvidence(evidence_refs=(intel,)),
     )
-    plan = receipt(journal, "creative_plan.v1", {"plan_id": "p"})
+    plan = receipt(
+        journal,
+        "creative_plan.v1",
+        {"plan_id": "p", "policy_decision": "ACCEPT"},
+    )
     engine.transition(
         "x",
         WorkflowState.PLANNED,
@@ -233,14 +248,24 @@ def test_assets_ready_requires_manifest_with_assets(tmp_path):
 def test_verified_requires_evidence_payload_accept_not_only_caller_flag(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     engine = StateTransitionEngine(journal)
-    advance_to_assets_ready(journal, engine)
+    asset_ref = advance_to_assets_ready(journal, engine)
 
-    blocked = receipt(journal, "verification.v1", {"decision": "BLOCK"})
+    blocked = receipt(
+        journal,
+        "verification.v1",
+        {
+            "decision": "BLOCK",
+            "plan_id": "plan-1",
+            "asset_manifest_ref": asset_ref,
+        },
+    )
     with pytest.raises(ValueError, match="record ACCEPT"):
         engine.transition(
             "x",
             WorkflowState.VERIFIED,
             TransitionEvidence(
+                plan_id="plan-1",
+                asset_manifest_refs=(asset_ref,),
                 verification_ref=blocked,
                 policy_decision="ACCEPT",
             ),
@@ -250,12 +275,22 @@ def test_verified_requires_evidence_payload_accept_not_only_caller_flag(tmp_path
 def test_schedule_evidence_must_match_schedule_id(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     engine = StateTransitionEngine(journal)
-    advance_to_assets_ready(journal, engine)
-    verification = receipt(journal, "verification.v1", {"decision": "ACCEPT"})
+    asset_ref = advance_to_assets_ready(journal, engine)
+    verification = receipt(
+        journal,
+        "verification.v1",
+        {
+            "decision": "ACCEPT",
+            "plan_id": "plan-1",
+            "asset_manifest_ref": asset_ref,
+        },
+    )
     engine.transition(
         "x",
         WorkflowState.VERIFIED,
         TransitionEvidence(
+            plan_id="plan-1",
+            asset_manifest_refs=(asset_ref,),
             verification_ref=verification,
             policy_decision="ACCEPT",
         ),
@@ -272,13 +307,23 @@ def test_schedule_evidence_must_match_schedule_id(tmp_path):
 def test_published_cannot_be_claimed_from_dry_run_payload_even_if_flag_lies(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     engine = StateTransitionEngine(journal)
-    advance_to_assets_ready(journal, engine)
+    asset_ref = advance_to_assets_ready(journal, engine)
 
-    verified = receipt(journal, "verification.v1", {"decision": "ACCEPT"})
+    verified = receipt(
+        journal,
+        "verification.v1",
+        {
+            "decision": "ACCEPT",
+            "plan_id": "plan-1",
+            "asset_manifest_ref": asset_ref,
+        },
+    )
     engine.transition(
         "x",
         WorkflowState.VERIFIED,
         TransitionEvidence(
+            plan_id="plan-1",
+            asset_manifest_refs=(asset_ref,),
             verification_ref=verified,
             policy_decision="ACCEPT",
         ),
@@ -374,7 +419,7 @@ def test_transition_rejects_evidence_owned_by_another_entity(tmp_path):
     engine.register("x")
     foreign = receipt(
         journal,
-        "intelligence_signal.v4",
+        "intelligence_pipeline.v4",
         {"content_id": "foreign"},
         entity="y",
     )
@@ -391,7 +436,7 @@ def test_future_evidence_cannot_retroactively_validate_past_transition(tmp_path)
     template = DecisionJournal(tmp_path / "template.db")
     future_ref = record_evidence(
         template,
-        "intelligence_signal.v4",
+        "intelligence_pipeline.v4",
         payload,
     ).evidence_ref
 
@@ -423,7 +468,7 @@ def test_future_evidence_cannot_retroactively_validate_past_transition(tmp_path)
         },
         expected_from_state="IDEA",
     )
-    record_evidence(journal, "intelligence_signal.v4", payload)
+    record_evidence(journal, "intelligence_pipeline.v4", payload)
 
     assert journal.verify_chain() is True
     with pytest.raises(RuntimeError, match="evidence contract"):
@@ -434,13 +479,17 @@ def test_assets_ready_rejects_manifest_for_different_admitted_plan(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     engine = StateTransitionEngine(journal)
     engine.register("x")
-    intel = receipt(journal, "intelligence_signal.v4", {"x": 1})
+    intel = receipt(journal, "intelligence_pipeline.v4", {"x": 1})
     engine.transition(
         "x",
         WorkflowState.EVIDENCE_COLLECTED,
         TransitionEvidence(evidence_refs=(intel,)),
     )
-    plan_ref = receipt(journal, "creative_plan.v1", {"plan_id": "p1"})
+    plan_ref = receipt(
+        journal,
+        "creative_plan.v1",
+        {"plan_id": "p1", "policy_decision": "ACCEPT"},
+    )
     engine.transition(
         "x",
         WorkflowState.PLANNED,
@@ -470,13 +519,17 @@ def test_assets_ready_rejects_invalid_manifest_semantics(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     engine = StateTransitionEngine(journal)
     engine.register("x")
-    intel = receipt(journal, "intelligence_signal.v4", {"x": 1})
+    intel = receipt(journal, "intelligence_pipeline.v4", {"x": 1})
     engine.transition(
         "x",
         WorkflowState.EVIDENCE_COLLECTED,
         TransitionEvidence(evidence_refs=(intel,)),
     )
-    plan_ref = receipt(journal, "creative_plan.v1", {"plan_id": "p"})
+    plan_ref = receipt(
+        journal,
+        "creative_plan.v1",
+        {"plan_id": "p", "policy_decision": "ACCEPT"},
+    )
     engine.transition(
         "x",
         WorkflowState.PLANNED,
@@ -496,3 +549,112 @@ def test_assets_ready_rejects_invalid_manifest_semantics(tmp_path):
                 asset_manifest_refs=(bad_manifest,),
             ),
         )
+
+
+def test_evidence_collected_rejects_wrong_typed_evidence(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    engine = StateTransitionEngine(journal)
+    engine.register("x")
+    wrong = receipt(journal, "measurement.v1", {"views": 1})
+    with pytest.raises(ValueError, match="wrong type"):
+        engine.transition(
+            "x",
+            WorkflowState.EVIDENCE_COLLECTED,
+            TransitionEvidence(evidence_refs=(wrong,)),
+        )
+
+
+def test_planned_requires_policy_accept_in_plan_evidence(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    engine = StateTransitionEngine(journal)
+    engine.register("x")
+    intel = receipt(journal, "intelligence_pipeline.v4", {"content_id": "x"})
+    engine.transition(
+        "x",
+        WorkflowState.EVIDENCE_COLLECTED,
+        TransitionEvidence(evidence_refs=(intel,)),
+    )
+    plan_ref = receipt(journal, "creative_plan.v1", {"plan_id": "p"})
+    with pytest.raises(ValueError, match="policy ACCEPT"):
+        engine.transition(
+            "x",
+            WorkflowState.PLANNED,
+            TransitionEvidence(plan_id="p", plan_ref=plan_ref),
+        )
+
+
+def test_assets_ready_requires_one_canonical_manifest(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    engine = StateTransitionEngine(journal)
+    engine.register("x")
+    intel = receipt(journal, "intelligence_pipeline.v4", {"content_id": "x"})
+    engine.transition(
+        "x",
+        WorkflowState.EVIDENCE_COLLECTED,
+        TransitionEvidence(evidence_refs=(intel,)),
+    )
+    plan_ref = receipt(
+        journal,
+        "creative_plan.v1",
+        {"plan_id": "p", "policy_decision": "ACCEPT"},
+    )
+    engine.transition(
+        "x",
+        WorkflowState.PLANNED,
+        TransitionEvidence(plan_id="p", plan_ref=plan_ref),
+    )
+    first = receipt(
+        journal,
+        "asset_manifest.v1",
+        {"plan_id": "p", "assets": ["artifact://a"], "provider": "fixture"},
+    )
+    second = receipt(
+        journal,
+        "asset_manifest.v1",
+        {"plan_id": "p", "assets": ["artifact://b"], "provider": "fixture"},
+    )
+    with pytest.raises(ValueError, match="exactly one"):
+        engine.transition(
+            "x",
+            WorkflowState.ASSETS_READY,
+            TransitionEvidence(
+                plan_id="p",
+                asset_manifest_refs=(first, second),
+            ),
+        )
+
+
+def test_verified_must_bind_to_exact_assets_ready_manifest(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    engine = StateTransitionEngine(journal)
+    admitted_ref = advance_to_assets_ready(journal, engine)
+    alternate_ref = receipt(
+        journal,
+        "asset_manifest.v1",
+        {
+            "plan_id": "plan-1",
+            "assets": ["artifact://alternate"],
+            "provider": "fixture",
+        },
+    )
+    verification = receipt(
+        journal,
+        "verification.v1",
+        {
+            "decision": "ACCEPT",
+            "plan_id": "plan-1",
+            "asset_manifest_ref": alternate_ref,
+        },
+    )
+    with pytest.raises(ValueError, match="does not match ASSETS_READY"):
+        engine.transition(
+            "x",
+            WorkflowState.VERIFIED,
+            TransitionEvidence(
+                plan_id="plan-1",
+                asset_manifest_refs=(alternate_ref,),
+                verification_ref=verification,
+                policy_decision="ACCEPT",
+            ),
+        )
+    assert admitted_ref != alternate_ref
