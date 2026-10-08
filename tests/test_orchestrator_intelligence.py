@@ -4,7 +4,7 @@ import pytest
 
 from media_omega.intelligence_pipeline import IntelligenceSignal
 from media_omega.memory import DecisionJournal
-from media_omega.models import CreativePlan, Decision
+from media_omega.models import CreatedAsset, CreativePlan, Decision
 from media_omega.orchestrator import Orchestrator
 from media_omega.state_machine import WorkflowState
 
@@ -197,10 +197,27 @@ def test_same_plan_id_with_changed_payload_is_not_treated_as_idempotent(tmp_path
         engine.plan_selected(plan("plan-1", title="Changed concept"))
 
 
+def created_asset(
+    tmp_path,
+    asset_id="video",
+    filename="video.mp4",
+    data=b"fixture-video",
+    media_type="video/mp4",
+):
+    path = tmp_path / filename
+    path.write_bytes(data)
+    return CreatedAsset(
+        asset_id=asset_id,
+        path=str(path),
+        media_type=media_type,
+        provenance=f"fixture://{asset_id}",
+    )
+
+
 class FakeCreator:
     name = "fake-creator"
 
-    def __init__(self, assets=("artifact://video",)):
+    def __init__(self, assets=()):
         self.assets = assets
         self.calls = []
 
@@ -218,13 +235,27 @@ def planned_engine(tmp_path):
 
 def test_planned_opportunity_creates_one_manifest_and_reaches_assets_ready(tmp_path):
     journal, engine, candidate = planned_engine(tmp_path)
-    creator = FakeCreator(("artifact://video", "artifact://thumbnail"))
+    creator = FakeCreator((
+        created_asset(tmp_path),
+        created_asset(
+            tmp_path,
+            asset_id="thumbnail",
+            filename="thumbnail.png",
+            data=b"fixture-thumbnail",
+            media_type="image/png",
+        ),
+    ))
 
     manifest = engine.create_assets(candidate, creator)
 
     assert manifest.plan_id == candidate.id
     assert manifest.entity_id == "youtube:target"
-    assert manifest.assets == ("artifact://video", "artifact://thumbnail")
+    assert [asset.asset_id for asset in manifest.assets] == [
+        "video",
+        "thumbnail",
+    ]
+    assert all(len(asset.sha256) == 64 for asset in manifest.assets)
+    assert all(asset.size_bytes > 0 for asset in manifest.assets)
     assert creator.calls == [(candidate.id, candidate.id)]
     assert engine.states.current_state("youtube:target") is WorkflowState.ASSETS_READY
 
@@ -232,7 +263,7 @@ def test_planned_opportunity_creates_one_manifest_and_reaches_assets_ready(tmp_p
     manifests = [
         event for event in events
         if event["event_type"] == "EVIDENCE"
-        and event["payload"]["evidence_type"] == "asset_manifest.v1"
+        and event["payload"]["evidence_type"] == "asset_manifest.v2"
     ]
     assert len(manifests) == 1
     assert manifests[0]["payload"]["payload"]["plan_id"] == candidate.id
@@ -240,7 +271,7 @@ def test_planned_opportunity_creates_one_manifest_and_reaches_assets_ready(tmp_p
 
 def test_asset_creation_replay_does_not_call_provider_twice(tmp_path):
     journal, engine, candidate = planned_engine(tmp_path)
-    creator = FakeCreator()
+    creator = FakeCreator((created_asset(tmp_path),))
 
     first = engine.create_assets(candidate, creator)
     event_count = len(journal.read_all())
