@@ -35,3 +35,20 @@ def test_sub_minute_content_age_fails_closed_instead_of_clamping_rate():
     )
     with pytest.raises(ValueError, match="age is too short"):
         _ = observation.views_per_hour
+
+
+@pytest.mark.parametrize("views", [1.5, True, -1])
+def test_views_must_be_non_negative_integer(views):
+    with pytest.raises(ValueError, match="views must"):
+        make(views=views).validate()
+
+
+@pytest.mark.parametrize("baseline", [float("nan"), float("inf"), -1.0, True])
+def test_legacy_baseline_storage_value_must_be_finite_non_negative(baseline):
+    with pytest.raises(ValueError, match="creator_baseline_views"):
+        make(creator_baseline_views=baseline).validate()
+
+
+def test_non_string_identity_fails_as_validation_error_not_attribute_error():
+    with pytest.raises(ValueError, match="content_id"):
+        make(content_id=None).validate()
