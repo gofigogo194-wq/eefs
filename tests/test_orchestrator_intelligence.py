@@ -195,3 +195,86 @@ def test_same_plan_id_with_changed_payload_is_not_treated_as_idempotent(tmp_path
     engine.plan_selected(plan("plan-1", title="Original concept"))
     with pytest.raises(ValueError, match="replay differs"):
         engine.plan_selected(plan("plan-1", title="Changed concept"))
+
+
+class FakeCreator:
+    name = "fake-creator"
+
+    def __init__(self, assets=("artifact://video",)):
+        self.assets = assets
+        self.calls = []
+
+    def create(self, plan, idempotency_key):
+        self.calls.append((plan.id, idempotency_key))
+        return self.assets
+
+
+def planned_engine(tmp_path):
+    journal, engine = selected_engine(tmp_path)
+    candidate = plan()
+    engine.plan_selected(candidate)
+    return journal, engine, candidate
+
+
+def test_planned_opportunity_creates_one_manifest_and_reaches_assets_ready(tmp_path):
+    journal, engine, candidate = planned_engine(tmp_path)
+    creator = FakeCreator(("artifact://video", "artifact://thumbnail"))
+
+    manifest = engine.create_assets(candidate, creator)
+
+    assert manifest.plan_id == candidate.id
+    assert manifest.entity_id == "youtube:target"
+    assert manifest.assets == ("artifact://video", "artifact://thumbnail")
+    assert creator.calls == [(candidate.id, candidate.id)]
+    assert engine.states.current_state("youtube:target") is WorkflowState.ASSETS_READY
+
+    events = journal.read_all()
+    manifests = [
+        event for event in events
+        if event["event_type"] == "EVIDENCE"
+        and event["payload"]["evidence_type"] == "asset_manifest.v1"
+    ]
+    assert len(manifests) == 1
+    assert manifests[0]["payload"]["payload"]["plan_id"] == candidate.id
+
+
+def test_asset_creation_replay_does_not_call_provider_twice(tmp_path):
+    journal, engine, candidate = planned_engine(tmp_path)
+    creator = FakeCreator()
+
+    first = engine.create_assets(candidate, creator)
+    event_count = len(journal.read_all())
+    second = engine.create_assets(candidate, creator)
+
+    assert second == first
+    assert creator.calls == [(candidate.id, candidate.id)]
+    assert len(journal.read_all()) == event_count
+
+
+@pytest.mark.parametrize("assets", [(), ("",), ("artifact://x", "artifact://x")])
+def test_invalid_creator_output_does_not_advance_state(tmp_path, assets):
+    _, engine, candidate = planned_engine(tmp_path)
+    creator = FakeCreator(assets)
+
+    with pytest.raises(ValueError):
+        engine.create_assets(candidate, creator)
+
+    assert engine.states.current_state("youtube:target") is WorkflowState.PLANNED
+
+
+def test_creator_cannot_use_plan_that_differs_from_admitted_plan(tmp_path):
+    _, engine, candidate = planned_engine(tmp_path)
+    changed = CreativePlan(
+        opportunity_id=candidate.opportunity_id,
+        platform=candidate.platform,
+        format=candidate.format,
+        title="mutated after admission",
+        original=candidate.original,
+        rights_confirmed=candidate.rights_confirmed,
+        estimated_cost=candidate.estimated_cost,
+        metadata=candidate.metadata,
+        id=candidate.id,
+    )
+
+    with pytest.raises(ValueError, match="differs from admitted plan"):
+        engine.create_assets(changed, FakeCreator())
