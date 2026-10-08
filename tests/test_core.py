@@ -60,3 +60,20 @@ def test_policy_configuration_is_validated():
         verify(approved_plan(), Policy(allowed_platforms=()))
 
 
+
+
+@pytest.mark.parametrize(
+    ("changes", "reason"),
+    [
+        ({"original": "yes"}, "CONTENT_NOT_ORIGINAL"),
+        ({"rights_confirmed": 1}, "RIGHTS_NOT_CONFIRMED"),
+        ({"estimated_cost": True}, "BUDGET_POLICY_FAILED"),
+        ({"platform": None}, "PLATFORM_REQUIRED"),
+        ({"metadata": []}, "METADATA_MUST_BE_OBJECT"),
+        ({"id": ""}, "PLAN_ID_REQUIRED"),
+    ],
+)
+def test_policy_rejects_wrong_runtime_types(changes, reason):
+    result = verify(approved_plan(**changes))
+    assert result.decision is Decision.BLOCK
+    assert reason in result.reasons
