@@ -42,7 +42,7 @@ def refresh_tracked(
             creator_id=previous.creator_id,
             published_at=previous.published_at,
             observed_at=timestamp,
-            views=int(stats[previous.content_id]),
+            views=stats[previous.content_id],
             creator_baseline_views=0.0,
             evidence_ref=f"api://youtube/videos/{previous.content_id}@{timestamp}",
             discovery_query=previous.discovery_query,
