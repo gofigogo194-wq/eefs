@@ -36,6 +36,8 @@ Everything inside those actions is implementation detail. New features must exte
 
 The implemented and tested live path currently ends at:
 
-DISCOVER → OBSERVE → COMPARE → SELECT → EVIDENCE_COLLECTED
+DISCOVER → OBSERVE → COMPARE → SELECT → PLAN + POLICY VERIFY → PLANNED
 
-Strategy/creation/publishing/measurement remain future stages. They must extend the same linear flow instead of creating parallel systems.
+PLAN + POLICY VERIFY is deliberately one step: one selected opportunity gets one plan. If rights, platform, required fields, or budget fail, the opportunity is BLOCKED. If they pass, the exact plan is journaled and the workflow reaches PLANNED.
+
+Asset creation, final asset verification, publishing, measurement, and learning remain future stages. They must extend the same linear flow instead of creating parallel systems.
