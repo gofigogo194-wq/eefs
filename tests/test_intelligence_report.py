@@ -62,3 +62,21 @@ def test_report_separates_stale_creator_baseline(tmp_path):
     report = analyze_intelligence(store, journal, Transport("2026-10-07T05:00:00+00:00"))
     assert report.ready == ()
     assert report.unreliable_creator_baseline == ("stale",)
+
+
+def test_one_bad_history_does_not_block_other_ready_content(tmp_path):
+    store = SnapshotStore(tmp_path / "snapshots.db")
+    journal = DecisionJournal(tmp_path / "journal.db")
+    for row in [
+        obs("good", "g", 1, 1000),
+        obs("good", "g", 2, 2000),
+        obs("good", "g", 3, 5000),
+        obs("bad", "b", 1, 1000),
+        obs("bad", "b", 2, 900),
+        obs("bad", "b", 3, 1200),
+    ]:
+        store.append(row)
+
+    report = analyze_intelligence(store, journal, Transport())
+    assert [x.content_id for x in report.ready] == ["good"]
+    assert report.unreliable_history == ("bad",)
