@@ -10,7 +10,7 @@ The first proving ground is RELAX SABAI MUSIK, but the architecture is not tied 
 
 ## Operating loop
 
-DISCOVER → OBSERVE → COMPARE → SELECT → PLAN + VERIFY → PUBLISH → MEASURE + LEARN
+DISCOVER → OBSERVE → COMPARE → SELECT → PLAN + POLICY CHECK → CREATE → VERIFY → PUBLISH → MEASURE + LEARN
 
 The system deliberately keeps one live path for each responsibility. Reliability should come from explicit contracts, restart-safe persistence, and tests — not from adding duplicate agents, scores, or pipelines. See `docs/SIMPLE_FLOW.md`.
 
@@ -32,13 +32,13 @@ The system deliberately keeps one live path for each responsibility. Reliability
 
 The Candidate currently proves the read-only path:
 
-YouTube discovery → persisted observations → temporal momentum → age-normalized creator baseline v2 → peer-cohort diagnostics → IntelligenceSignal v4 → Orchestrator selection → one policy-checked CreativePlan → one creator adapter → typed asset manifest → ASSETS_READY state.
+YouTube discovery → persisted observations → temporal momentum → age-normalized creator baseline v2 → peer-cohort diagnostics → IntelligenceSignal v4 → Orchestrator selection → one policy-checked CreativePlan → one deterministic creator → real local assets → AssetManifest v2 with SHA256/size/provenance → one Verification Gate → VERIFIED state.
 
 The former duplicate intelligence/scoring, scout, baseline-collection, momentum-report, generic-source, and stale YouTube wrapper paths have been retired. Workflow transitions are enforced by a centralized state engine. The decision journal uses SQLite append-only guards plus a tamper-evident hash chain. Evidence references are content-addressed and bind both evidence type and payload.
 
 Candidate CI currently gates Python 3.11–3.14 on Linux and Python 3.14 on Windows with pinned pytest.
 
-Planning and creation are intentionally linear: one selected opportunity admits one exact plan, and one creator adapter may produce one manifest for that plan using the plan id as the idempotency key. A failed plan check does not permanently kill the opportunity. The creator contract is tested with a fake provider; no production creator or publisher exists yet. No autonomous public-publishing claim is made.
+Planning, creation, and verification are intentionally linear: one selected opportunity admits one exact plan, one creator adapter may produce one manifest for that plan using the plan id as the idempotency key, and one verification gate may promote that exact manifest to VERIFIED. A failed plan check does not permanently kill the opportunity. The deterministic creator used by CI writes real files so MEDIA Ω can independently compute and later re-check their SHA256 and byte size. Verification proves file integrity, binding, declared media type, and provenance; it does not claim independent copyright/originality certainty. No production creator or publisher exists yet, and no autonomous public-publishing claim is made.
 
 ## Open-source reconnaissance
 
