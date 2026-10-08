@@ -3,10 +3,18 @@ from __future__ import annotations
 from dataclasses import asdict
 import json
 
+from .asset_verification import capture_created_asset, verify_asset_manifest
 from .evidence import record_evidence, resolve_evidence
 from .intelligence_pipeline import IntelligenceSignal, rank_signals
 from .memory import DecisionJournal
-from .models import AssetManifest, CreativePlan, Decision, GateResult
+from .models import (
+    AssetManifest,
+    AssetRecord,
+    CreatedAsset,
+    CreativePlan,
+    Decision,
+    GateResult,
+)
 from .policy import Policy, verify
 from .state_machine import StateTransitionEngine, TransitionEvidence, WorkflowState
 
@@ -153,60 +161,149 @@ class Orchestrator:
         )
         return gate
 
-    def create_assets(self, plan: CreativePlan, creator: object) -> AssetManifest:
+    @staticmethod
+    def _expected_plan_payload(
+        plan: CreativePlan,
+        entity_id: str,
+    ) -> dict:
+        expected = asdict(plan)
+        expected["entity_id"] = entity_id
+        expected["plan_id"] = plan.id
+        expected["policy_decision"] = Decision.ACCEPT.value
+        return expected
+
+    def _require_admitted_plan(self, plan: CreativePlan) -> None:
+        entity_id = plan.opportunity_id.strip()
+        history = self.states.history(entity_id)
+        planned = next(
+            (
+                transition
+                for transition in reversed(history)
+                if transition.to_state is WorkflowState.PLANNED
+            ),
+            None,
+        )
+        if planned is None or planned.evidence.plan_id != plan.id:
+            raise ValueError("plan does not match admitted workflow plan")
+        admitted = resolve_evidence(self.journal, planned.evidence.plan_ref)
+        if (
+            admitted is None
+            or admitted.payload
+            != self._expected_plan_payload(plan, entity_id)
+        ):
+            raise ValueError("plan differs from admitted plan")
+
+    @staticmethod
+    def _manifest_from_record(
+        record,
+        entity_id: str,
+        plan_id: str,
+    ) -> AssetManifest:
+        if record.receipt.evidence_type != "asset_manifest.v2":
+            raise RuntimeError(
+                "legacy asset manifest is not eligible for verification"
+            )
+        payload = record.payload
+        if payload.get("version") != "asset_manifest.v2":
+            raise RuntimeError("asset manifest version is invalid")
+        if payload.get("entity_id") != entity_id:
+            raise RuntimeError("asset manifest entity is invalid")
+        if payload.get("plan_id") != plan_id:
+            raise RuntimeError("asset manifest plan is invalid")
+
+        provider = payload.get("provider")
+        raw_assets = payload.get("assets")
+        if not isinstance(provider, str) or not provider.strip():
+            raise RuntimeError("asset manifest provider is invalid")
+        if not isinstance(raw_assets, list) or not raw_assets:
+            raise RuntimeError("asset manifest assets are invalid")
+
+        assets: list[AssetRecord] = []
+        for raw in raw_assets:
+            if not isinstance(raw, dict):
+                raise RuntimeError("asset manifest record is invalid")
+            try:
+                assets.append(AssetRecord(
+                    asset_id=raw["asset_id"],
+                    path=raw["path"],
+                    media_type=raw["media_type"],
+                    sha256=raw["sha256"],
+                    size_bytes=raw["size_bytes"],
+                    provenance=raw["provenance"],
+                ))
+            except KeyError as exc:
+                raise RuntimeError(
+                    "asset manifest record is incomplete"
+                ) from exc
+
+        return AssetManifest(
+            entity_id=entity_id,
+            plan_id=plan_id,
+            assets=tuple(assets),
+            provider=provider,
+        )
+
+    def create_assets(
+        self,
+        plan: CreativePlan,
+        creator: object,
+    ) -> AssetManifest:
         entity_id = plan.opportunity_id.strip()
         if not entity_id:
             raise ValueError("plan opportunity_id is required")
 
         current = self.states.current_state(entity_id)
-        if current is WorkflowState.ASSETS_READY:
+        if current in (WorkflowState.ASSETS_READY, WorkflowState.VERIFIED):
+            self._require_admitted_plan(plan)
             latest = self.states.history(entity_id)[-1]
             if latest.evidence.plan_id != plan.id:
                 raise ValueError("assets belong to a different plan")
             if len(latest.evidence.asset_manifest_refs) != 1:
-                raise RuntimeError("canonical creator path requires one asset manifest")
+                raise RuntimeError(
+                    "canonical creator path requires one asset manifest"
+                )
             record = resolve_evidence(
                 self.journal,
                 latest.evidence.asset_manifest_refs[0],
             )
             if record is None:
                 raise RuntimeError("asset manifest evidence is missing")
-            return AssetManifest(
-                entity_id=entity_id,
-                plan_id=plan.id,
-                assets=tuple(record.payload["assets"]),
-                provider=str(record.payload["provider"]),
-            )
+            return self._manifest_from_record(record, entity_id, plan.id)
 
         if current is not WorkflowState.PLANNED:
-            raise ValueError("opportunity must be PLANNED before asset creation")
+            raise ValueError(
+                "opportunity must be PLANNED before asset creation"
+            )
 
-        planned = self.states.history(entity_id)[-1]
-        if planned.evidence.plan_id != plan.id:
-            raise ValueError("creator plan does not match admitted plan")
-        admitted = resolve_evidence(self.journal, planned.evidence.plan_ref)
-        expected = asdict(plan)
-        expected["entity_id"] = entity_id
-        expected["plan_id"] = plan.id
-        expected["policy_decision"] = Decision.ACCEPT.value
-        if admitted is None or admitted.payload != expected:
-            raise ValueError("creator plan differs from admitted plan")
+        self._require_admitted_plan(plan)
 
         provider = getattr(creator, "name", "")
         create = getattr(creator, "create", None)
         if not isinstance(provider, str) or not provider.strip():
             raise ValueError("creator provider name is required")
         if not callable(create):
-            raise ValueError("creator must provide create(plan, idempotency_key=...)")
+            raise ValueError(
+                "creator must provide create(plan, idempotency_key=...)"
+            )
 
         raw_assets = create(plan, idempotency_key=plan.id)
         if not isinstance(raw_assets, (list, tuple)) or not raw_assets:
             raise ValueError("creator must return at least one asset")
-        assets = tuple(raw_assets)
-        if any(not isinstance(asset, str) or not asset.strip() for asset in assets):
-            raise ValueError("creator assets must be non-empty strings")
-        if len(set(assets)) != len(assets):
-            raise ValueError("creator assets must be unique")
+        if any(not isinstance(asset, CreatedAsset) for asset in raw_assets):
+            raise ValueError(
+                "creator assets must use the CreatedAsset contract"
+            )
+
+        assets = tuple(
+            capture_created_asset(asset)
+            for asset in raw_assets
+        )
+        asset_ids = [asset.asset_id for asset in assets]
+        asset_paths = [asset.path for asset in assets]
+        if len(set(asset_ids)) != len(asset_ids):
+            raise ValueError("creator asset ids must be unique")
+        if len(set(asset_paths)) != len(asset_paths):
+            raise ValueError("creator asset paths must be unique")
 
         manifest = AssetManifest(
             entity_id=entity_id,
@@ -228,4 +325,103 @@ class Orchestrator:
             ),
         )
         return manifest
+
+    def verify_assets(self, plan: CreativePlan) -> GateResult:
+        entity_id = plan.opportunity_id.strip()
+        if not entity_id:
+            raise ValueError("plan opportunity_id is required")
+
+        current = self.states.current_state(entity_id)
+        self._require_admitted_plan(plan)
+
+        if current is WorkflowState.VERIFIED:
+            latest = self.states.history(entity_id)[-1]
+            if latest.evidence.plan_id != plan.id:
+                raise ValueError("verified assets belong to a different plan")
+            if len(latest.evidence.asset_manifest_refs) != 1:
+                raise RuntimeError(
+                    "verified state requires one asset manifest"
+                )
+            verification = resolve_evidence(
+                self.journal,
+                latest.evidence.verification_ref,
+            )
+            if (
+                verification is None
+                or verification.receipt.evidence_type != "verification.v1"
+                or verification.payload.get("decision") != "ACCEPT"
+                or verification.payload.get("plan_id") != plan.id
+                or verification.payload.get("asset_manifest_ref")
+                != latest.evidence.asset_manifest_refs[0]
+            ):
+                raise RuntimeError(
+                    "verified state has invalid verification evidence"
+                )
+            return GateResult(
+                Decision.ACCEPT,
+                ("ASSETS_ALREADY_VERIFIED",),
+            )
+
+        if current is not WorkflowState.ASSETS_READY:
+            raise ValueError(
+                "opportunity must be ASSETS_READY before verification"
+            )
+
+        latest = self.states.history(entity_id)[-1]
+        if latest.evidence.plan_id != plan.id:
+            raise ValueError("asset manifest belongs to a different plan")
+        if len(latest.evidence.asset_manifest_refs) != 1:
+            raise RuntimeError(
+                "canonical verification requires one asset manifest"
+            )
+        manifest_ref = latest.evidence.asset_manifest_refs[0]
+        record = resolve_evidence(self.journal, manifest_ref)
+        if record is None:
+            raise RuntimeError("asset manifest evidence is missing")
+        manifest = self._manifest_from_record(
+            record,
+            entity_id,
+            plan.id,
+        )
+
+        gate = verify_asset_manifest(manifest, plan)
+        verification_payload = {
+            "entity_id": entity_id,
+            "plan_id": plan.id,
+            "asset_manifest_ref": manifest_ref,
+            "decision": gate.decision.value,
+            "reasons": list(gate.reasons),
+            "checked_asset_ids": [
+                asset.asset_id for asset in manifest.assets
+            ],
+            "verified_properties": [
+                "entity_plan_binding",
+                "file_existence",
+                "non_empty",
+                "sha256",
+                "size",
+                "media_type",
+                "provenance",
+                "platform_media",
+            ],
+        }
+        receipt = record_evidence(
+            self.journal,
+            "verification.v1",
+            verification_payload,
+        )
+        if gate.decision is not Decision.ACCEPT:
+            return gate
+
+        self.states.transition(
+            entity_id,
+            WorkflowState.VERIFIED,
+            TransitionEvidence(
+                plan_id=plan.id,
+                asset_manifest_refs=(manifest_ref,),
+                verification_ref=receipt.evidence_ref,
+                policy_decision=Decision.ACCEPT.value,
+            ),
+        )
+        return gate
 
