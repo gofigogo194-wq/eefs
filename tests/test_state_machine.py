@@ -42,13 +42,16 @@ def advance_to_assets_ready(journal, engine, entity="x"):
     assets = receipt(
         journal,
         "asset_manifest.v1",
-        {"assets": ["artifact://video-1"]},
+        {"plan_id": "plan-1", "assets": ["artifact://video-1"]},
         entity,
     )
     engine.transition(
         entity,
         WorkflowState.ASSETS_READY,
-        TransitionEvidence(asset_manifest_refs=(assets,)),
+        TransitionEvidence(
+            plan_id="plan-1",
+            asset_manifest_refs=(assets,),
+        ),
     )
 
 
@@ -207,12 +210,19 @@ def test_assets_ready_requires_manifest_with_assets(tmp_path):
         WorkflowState.PLANNED,
         TransitionEvidence(plan_id="p", plan_ref=plan),
     )
-    empty_manifest = receipt(journal, "asset_manifest.v1", {"assets": []})
+    empty_manifest = receipt(
+        journal,
+        "asset_manifest.v1",
+        {"plan_id": "p", "assets": []},
+    )
     with pytest.raises(ValueError, match="contain assets"):
         engine.transition(
             "x",
             WorkflowState.ASSETS_READY,
-            TransitionEvidence(asset_manifest_refs=(empty_manifest,)),
+            TransitionEvidence(
+                plan_id="p",
+                asset_manifest_refs=(empty_manifest,),
+            ),
         )
 
 
@@ -414,3 +424,35 @@ def test_future_evidence_cannot_retroactively_validate_past_transition(tmp_path)
     assert journal.verify_chain() is True
     with pytest.raises(RuntimeError, match="evidence contract"):
         engine.current_state("x")
+
+
+def test_assets_ready_rejects_manifest_for_different_admitted_plan(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    engine = StateTransitionEngine(journal)
+    engine.register("x")
+    intel = receipt(journal, "intelligence_signal.v4", {"x": 1})
+    engine.transition(
+        "x",
+        WorkflowState.EVIDENCE_COLLECTED,
+        TransitionEvidence(evidence_refs=(intel,)),
+    )
+    plan_ref = receipt(journal, "creative_plan.v1", {"plan_id": "p1"})
+    engine.transition(
+        "x",
+        WorkflowState.PLANNED,
+        TransitionEvidence(plan_id="p1", plan_ref=plan_ref),
+    )
+    manifest = receipt(
+        journal,
+        "asset_manifest.v1",
+        {"plan_id": "p2", "assets": ["artifact://x"]},
+    )
+    with pytest.raises(ValueError, match="admitted plan"):
+        engine.transition(
+            "x",
+            WorkflowState.ASSETS_READY,
+            TransitionEvidence(
+                plan_id="p2",
+                asset_manifest_refs=(manifest,),
+            ),
+        )
