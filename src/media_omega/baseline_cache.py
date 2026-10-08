@@ -38,7 +38,12 @@ class CreatorBaselineCache:
     def _load(self, creator_id: str) -> None:
         if creator_id in self._raw_ids:
             return
-        ids = tuple(self.transport.channel_recent_video_ids(creator_id))
+        raw_ids = self.transport.channel_recent_video_ids(creator_id)
+        ids = tuple(dict.fromkeys(
+            value.strip()
+            for value in raw_ids
+            if isinstance(value, str) and value.strip()
+        ))
         details: dict[str, dict[str, object]] = {}
         for start in range(0, len(ids), 50):
             batch = list(ids[start:start + 50])
