@@ -36,8 +36,10 @@ Everything inside those actions is implementation detail. New features must exte
 
 The implemented and tested live path currently ends at:
 
-DISCOVER → OBSERVE → COMPARE → SELECT → PLAN + POLICY CHECK → PLANNED
+DISCOVER → OBSERVE → COMPARE → SELECT → PLAN + POLICY CHECK → CREATE → ASSETS_READY
 
 PLAN + POLICY CHECK is deliberately one step: one selected opportunity gets one exact plan. If the plan declarations, platform, required fields, or budget fail, that plan attempt is rejected and the selected opportunity stays retryable. If they pass, the exact plan is journaled and the workflow reaches PLANNED. This is not yet proof that generated assets are original or licensed; actual asset verification stays after creation.
 
-Asset creation, final asset verification, publishing, measurement, and learning remain future stages. They must extend the same linear flow instead of creating parallel systems.
+The creator boundary is now enforced as one path: an admitted plan is passed to one creator adapter with the plan id as the idempotency key; one typed asset manifest is recorded; only then can the workflow reach ASSETS_READY. The current tests use a deterministic fake creator, so this proves the contract and recovery behavior, not a production media-generation provider.
+
+Final asset verification, publishing, measurement, and learning remain future stages. They must extend the same linear flow instead of creating parallel systems.
