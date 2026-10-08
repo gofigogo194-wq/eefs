@@ -59,7 +59,7 @@ Collects permitted public signals, search/discovery provenance, trend velocity, 
 Peer cohort v1 tracks query provenance, platform, content format when known, and explicit age comparability. Unknown format is surfaced as partial knowledge rather than silently treated as equivalent. Peer cohort data is currently diagnostic and does not silently rewrite the Intelligence v4 score.
 
 ### 3. Planning
-Current minimal implementation. A selected opportunity can admit exactly one CreativePlan. The plan must pass the configured policy gate, is journaled as typed evidence, and then advances to PLANNED. Exact replay is idempotent; a changed plan cannot silently replace it. This gate validates plan declarations and budget/platform rules, not the final generated assets.
+Current minimal implementation. A selected opportunity can admit exactly one CreativePlan. The plan must pass the configured policy gate, is journaled as typed evidence, and then advances to PLANNED. A failed plan attempt leaves the selected opportunity retryable. Exact replay is idempotent; a changed plan cannot silently replace it. This gate validates plan declarations and budget/platform rules, not the final generated assets.
 
 ### 5. Creator Pipeline
 Future provider-neutral interfaces for text, image, video, audio, voice, editing, captions, thumbnails, and packaging.
