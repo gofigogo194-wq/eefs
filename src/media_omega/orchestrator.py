@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import json
 
 from .evidence import record_evidence, resolve_evidence
 from .intelligence_pipeline import IntelligenceSignal, rank_signals
@@ -37,7 +38,12 @@ class Orchestrator:
         return f"{signal.platform}:{signal.content_id}"
 
     def _require_reported_signal(self, signal: IntelligenceSignal) -> None:
-        expected = asdict(signal)
+        expected = json.loads(json.dumps(
+            asdict(signal),
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ))
         for event in reversed(self.journal.read_all()):
             if event["event_type"] != "INTELLIGENCE_REPORT":
                 continue
