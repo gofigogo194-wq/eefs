@@ -11,12 +11,21 @@ class CountingTransport:
 
     def channel_recent_video_ids(self, creator_id):
         self.history_calls.append(creator_id)
-        return [f"{creator_id}-target", f"{creator_id}-a", f"{creator_id}-b", f"{creator_id}-c"]
+        return [
+            f"{creator_id}-target",
+            f"{creator_id}-a",
+            f"{creator_id}-b",
+            f"{creator_id}-c",
+        ]
 
     def video_details(self, ids):
         self.details_calls.append(tuple(ids))
         return {
-            x: {"views": 1000, "published_at": PUBLISHED, "observed_at": OBSERVED}
+            x: {
+                "views": 1000,
+                "published_at": PUBLISHED,
+                "observed_at": OBSERVED,
+            }
             for x in ids
         }
 
@@ -31,6 +40,15 @@ def test_same_creator_target_key_fetches_once():
     assert cache.size == 1
     assert set(first.source_observed_at) == {OBSERVED}
     assert all(ref.endswith(f"@{OBSERVED}") for ref in first.source_refs)
+
+
+def test_target_is_excluded_from_creator_baseline():
+    t = CountingTransport()
+    cache = CreatorBaselineCache(t)
+    result = cache.get("creator", "creator-target")
+    assert result.excluded_target is True
+    assert result.requested_ids == 3
+    assert result.returned_stats == 3
 
 
 def test_different_creators_fetch_independently():
@@ -65,3 +83,16 @@ def test_same_creator_different_targets_reuse_one_raw_history_fetch():
     assert t.history_calls == ["creator"]
     assert len(t.details_calls) == 1
     assert cache.size == 2
+
+
+def test_large_creator_history_is_batched_by_transport_limit():
+    class LargeTransport(CountingTransport):
+        def channel_recent_video_ids(self, creator_id):
+            self.history_calls.append(creator_id)
+            return [str(i) for i in range(120)]
+
+    t = LargeTransport()
+    result = CreatorBaselineCache(t).get("creator")
+    assert [len(batch) for batch in t.details_calls] == [50, 50, 20]
+    assert result.status == "READY"
+    assert result.requested_ids == 120

@@ -2,16 +2,27 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .baseline import build_creator_baseline, sample_at
-from .baseline_collection import BaselineCollectionResult
+from .baseline import CreatorBaseline, build_creator_baseline, sample_at
+
+
+@dataclass(frozen=True)
+class BaselineCollectionResult:
+    creator_id: str
+    requested_ids: int
+    returned_stats: int
+    excluded_target: bool
+    baseline: CreatorBaseline | None
+    status: str
+    source_refs: tuple[str, ...] = ()
+    source_observed_at: tuple[str, ...] = ()
 
 
 @dataclass
 class CreatorBaselineCache:
-    """Run-scoped cache for live creator-history samples.
+    """Single live creator-baseline path.
 
-    Historical video views are age-normalized using the actual observation time
-    returned by the transport, never a target video's older snapshot time.
+    Fetch creator history once per run, then derive target-specific age-normalized
+    baselines locally. No second collection pipeline exists.
     """
 
     transport: object
@@ -32,7 +43,11 @@ class CreatorBaselineCache:
         for start in range(0, len(ids), 50):
             batch = list(ids[start:start + 50])
             returned = self.transport.video_details(batch)
-            details.update({key: value for key, value in returned.items() if key in batch})
+            details.update({
+                key: value
+                for key, value in returned.items()
+                if key in batch
+            })
         self._raw_ids[creator_id] = ids
         self._raw_details[creator_id] = details
 
@@ -65,26 +80,32 @@ class CreatorBaselineCache:
                 str(detail["published_at"]),
                 observed_at,
             )
-            if sample is not None:
-                samples.append(sample)
-                source_refs.append(f"api://youtube/videos/{content_id}@{observed_at}")
-                source_observed_at.append(observed_at)
+            if sample is None:
+                continue
+            samples.append(sample)
+            source_refs.append(
+                f"api://youtube/videos/{content_id}@{observed_at}"
+            )
+            source_observed_at.append(observed_at)
 
-        excluded = target_content_id is not None and target_content_id in raw_ids
+        excluded = (
+            target_content_id is not None
+            and target_content_id in raw_ids
+        )
         baseline = (
             build_creator_baseline(creator_id, samples)
             if len(samples) >= self.minimum_samples
             else None
         )
         result = BaselineCollectionResult(
-            creator_id,
-            len(selected),
-            len(samples),
-            excluded,
-            baseline,
-            "READY" if baseline is not None else "INSUFFICIENT_HISTORY",
-            tuple(source_refs),
-            tuple(source_observed_at),
+            creator_id=creator_id,
+            requested_ids=len(selected),
+            returned_stats=len(samples),
+            excluded_target=excluded,
+            baseline=baseline,
+            status="READY" if baseline is not None else "INSUFFICIENT_HISTORY",
+            source_refs=tuple(source_refs),
+            source_observed_at=tuple(source_observed_at),
         )
         self._results[key] = result
         return result

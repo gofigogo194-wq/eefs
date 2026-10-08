@@ -31,6 +31,10 @@ def test_duplicate_scout_cycle_module_is_retired():
     assert importlib.util.find_spec("media_omega.scout_cycle") is None
 
 
+def test_duplicate_baseline_collection_pipeline_is_retired():
+    assert importlib.util.find_spec("media_omega.baseline_collection") is None
+
+
 def test_stale_youtube_observation_adapter_is_retired():
     import media_omega.youtube as youtube
 
