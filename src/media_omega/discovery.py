@@ -40,6 +40,20 @@ def select_candidates(items: list[DiscoveryItem], policy: DiscoveryPolicy | None
     seen: set[tuple[str, str]] = set()
     result: list[DiscoveryItem] = []
     for item in items:
+        if any(
+            not isinstance(value, str)
+            for value in (
+                item.platform,
+                item.content_id,
+                item.creator_id,
+                item.title,
+                item.published_at,
+                item.evidence_ref,
+                item.discovery_query,
+                item.content_format,
+            )
+        ):
+            continue
         if not item.platform.strip() or not item.content_id.strip() or not item.creator_id.strip():
             continue
         try:
