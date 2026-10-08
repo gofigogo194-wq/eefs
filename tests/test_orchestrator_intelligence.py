@@ -2,6 +2,7 @@ import pytest
 
 from media_omega.intelligence_pipeline import IntelligenceSignal
 from media_omega.memory import DecisionJournal
+from media_omega.models import CreativePlan, Decision
 from media_omega.orchestrator import Orchestrator
 from media_omega.state_machine import WorkflowState
 
@@ -65,4 +66,87 @@ def test_orchestrator_rejects_signal_without_source_provenance(tmp_path):
     engine = Orchestrator(journal)
     with pytest.raises(ValueError, match="source provenance"):
         engine.choose_intelligence([signal("x", 1.0, source_refs=())])
+    assert journal.read_all() == []
+
+
+def selected_engine(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    engine = Orchestrator(journal)
+    engine.choose_intelligence([signal("target", 1.0)])
+    return journal, engine
+
+
+def plan(plan_id="plan-1", **changes):
+    values = dict(
+        opportunity_id="youtube:target",
+        platform="youtube",
+        format="short",
+        title="Original concept",
+        original=True,
+        rights_confirmed=True,
+        estimated_cost=1.0,
+        id=plan_id,
+    )
+    values.update(changes)
+    return CreativePlan(**values)
+
+
+def test_selected_opportunity_advances_through_one_plan_policy_gate(tmp_path):
+    journal, engine = selected_engine(tmp_path)
+    gate = engine.plan_selected(plan())
+
+    assert gate.decision is Decision.ACCEPT
+    assert engine.states.current_state("youtube:target") is WorkflowState.PLANNED
+
+    events = journal.read_all()
+    assert [event["event_type"] for event in events].count("PLAN_POLICY_DECISION") == 1
+    plan_events = [
+        event for event in events
+        if event["event_type"] == "EVIDENCE"
+        and event["payload"]["evidence_type"] == "creative_plan.v1"
+    ]
+    assert len(plan_events) == 1
+    payload = plan_events[0]["payload"]["payload"]
+    assert payload["entity_id"] == "youtube:target"
+    assert payload["plan_id"] == "plan-1"
+    assert payload["policy_decision"] == "ACCEPT"
+
+
+def test_blocked_plan_stops_opportunity_instead_of_creating_planned_state(tmp_path):
+    journal, engine = selected_engine(tmp_path)
+    gate = engine.plan_selected(plan(rights_confirmed=False))
+
+    assert gate.decision is Decision.BLOCK
+    assert engine.states.current_state("youtube:target") is WorkflowState.BLOCKED
+    assert not any(
+        event["event_type"] == "EVIDENCE"
+        and event["payload"].get("evidence_type") == "creative_plan.v1"
+        for event in journal.read_all()
+    )
+
+
+def test_same_plan_replay_is_idempotent(tmp_path):
+    journal, engine = selected_engine(tmp_path)
+    candidate = plan()
+    engine.plan_selected(candidate)
+    event_count = len(journal.read_all())
+
+    gate = engine.plan_selected(candidate)
+    assert gate.decision is Decision.ACCEPT
+    assert len(journal.read_all()) == event_count
+    assert engine.states.current_state("youtube:target") is WorkflowState.PLANNED
+
+
+def test_different_plan_cannot_silently_replace_planned_opportunity(tmp_path):
+    _, engine = selected_engine(tmp_path)
+    engine.plan_selected(plan("plan-1"))
+    with pytest.raises(ValueError, match="different plan"):
+        engine.plan_selected(plan("plan-2"))
+
+
+def test_plan_requires_previously_selected_opportunity(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    engine = Orchestrator(journal)
+    with pytest.raises(ValueError, match="selected before planning"):
+        engine.plan_selected(plan())
     assert journal.read_all() == []
