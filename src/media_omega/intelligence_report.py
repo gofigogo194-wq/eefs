@@ -15,7 +15,7 @@ class IntelligenceReport:
     insufficient_snapshot_history: tuple[str, ...]
     insufficient_creator_history: tuple[str, ...]
     unreliable_creator_baseline: tuple[str, ...] = ()
-    unreliable_interval: tuple[str, ...] = ()
+    unreliable_history: tuple[str, ...] = ()
     required_snapshots: int = 3
 
 
@@ -31,7 +31,7 @@ def analyze_intelligence(
     short: list[str] = []
     no_creator_history: list[str] = []
     baseline_time: list[str] = []
-    unreliable: list[str] = []
+    unreliable_history: list[str] = []
 
     for latest in latest_observations:
         history = store.history("youtube", latest.content_id)
@@ -46,8 +46,16 @@ def analyze_intelligence(
                 diagnostic_cohort_policy,
             )
         except ValueError as exc:
-            if "interval is too short" in str(exc):
-                unreliable.append(latest.content_id)
+            message = str(exc)
+            if any(
+                marker in message
+                for marker in (
+                    "interval is too short",
+                    "cumulative views cannot decrease",
+                    "timestamps must be unique and increasing",
+                )
+            ):
+                unreliable_history.append(latest.content_id)
                 continue
             raise
 
@@ -67,14 +75,14 @@ def analyze_intelligence(
         insufficient_snapshot_history=tuple(sorted(short)),
         insufficient_creator_history=tuple(sorted(no_creator_history)),
         unreliable_creator_baseline=tuple(sorted(baseline_time)),
-        unreliable_interval=tuple(sorted(unreliable)),
+        unreliable_history=tuple(sorted(unreliable_history)),
     )
     journal.append("INTELLIGENCE_REPORT", {
         "ready": [asdict(x) for x in report.ready],
         "insufficient_snapshot_history": list(report.insufficient_snapshot_history),
         "insufficient_creator_history": list(report.insufficient_creator_history),
         "unreliable_creator_baseline": list(report.unreliable_creator_baseline),
-        "unreliable_interval": list(report.unreliable_interval),
+        "unreliable_history": list(report.unreliable_history),
         "required_snapshots": report.required_snapshots,
         "creator_baseline_cache_entries": cache.size,
     })
