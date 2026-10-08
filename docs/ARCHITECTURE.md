@@ -8,7 +8,7 @@ MEDIA Ω is not a "make N videos per day" bot. It is a goal-directed media opera
 
 There is exactly one live opportunity-decision path in the current Candidate:
 
-YouTube read-only evidence → persisted observations → temporal momentum → age-normalized creator baseline v2 → peer-cohort diagnostics → IntelligenceSignal v4 → rank_signals → Orchestrator.choose_intelligence → journal evidence receipt → enforced EVIDENCE_COLLECTED state.
+YouTube read-only evidence → persisted observations → temporal momentum → age-normalized creator baseline v2 → peer-cohort diagnostics → IntelligenceSignal v4 → rank_signals → Orchestrator.choose_intelligence → EVIDENCE_COLLECTED → one policy-checked CreativePlan → PLANNED.
 
 The former parallel modules `intelligence.py`, `evaluation.py`, `ranking.py`, and `scoring.py` were retired. They must not be reintroduced as a second scoring brain. New live opportunity features must enter through the versioned canonical `IntelligenceSignal` contract and its evidence/tests.
 
@@ -58,11 +58,8 @@ Collects permitted public signals, search/discovery provenance, trend velocity, 
 ### 2. Peer Cohort / Outlier Context
 Peer cohort v1 tracks query provenance, platform, content format when known, and explicit age comparability. Unknown format is surfaced as partial knowledge rather than silently treated as equivalent. Peer cohort data is currently diagnostic and does not silently rewrite the Intelligence v4 score.
 
-### 3. Strategy / Portfolio Brain
-Future layer. It may choose experiments across exploration/exploitation and platform/format, but it may not bypass canonical Intelligence v4 or the state/evidence contracts.
-
-### 4. Creative Planner
-Future layer. A plan may only advance the workflow when a typed creative-plan evidence receipt exists and matches the plan id.
+### 3. Planning
+Current minimal implementation. A selected opportunity can admit exactly one CreativePlan. The plan must pass the configured policy gate, is journaled as typed evidence, and then advances to PLANNED. Exact replay is idempotent; a changed plan cannot silently replace it. This gate validates plan declarations and budget/platform rules, not the final generated assets.
 
 ### 5. Creator Pipeline
 Future provider-neutral interfaces for text, image, video, audio, voice, editing, captions, thumbnails, and packaging.
@@ -93,7 +90,7 @@ Higher autonomy is earned through target tests and explicit capability grants; i
 
 The current deterministic E2E test covers:
 
-Scout/discovery → enrichment → snapshots → two refreshes → creator baseline → momentum → Intelligence v4 → Orchestrator → typed evidence receipt → EVIDENCE_COLLECTED.
+Scout/discovery → enrichment → snapshots → two refreshes → creator baseline → momentum → Intelligence v4 → Orchestrator → typed evidence receipt → one CreativePlan → policy check → PLANNED.
 
 Candidate CI gates:
 - Linux: Python 3.11, 3.12, 3.13, 3.14;
