@@ -43,7 +43,7 @@ class Transport:
         }
 
 
-def test_current_readonly_path_reaches_evidence_collected_without_publish(tmp_path):
+def test_current_canonical_path_reaches_planned_without_publish(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     snapshots = SnapshotStore(tmp_path / "snapshots.db")
     transport = Transport()
