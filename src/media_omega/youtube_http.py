@@ -56,8 +56,13 @@ class YouTubeHTTPTransport:
             "Accept": "application/json",
             "X-Goog-Api-Key": api_key,
         })
-        with urlopen(request, timeout=self.config.timeout_seconds) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        try:
+            with urlopen(request, timeout=self.config.timeout_seconds) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise YouTubePayloadError(
+                "YouTube API returned invalid JSON"
+            ) from exc
         if not isinstance(payload, dict):
             raise YouTubePayloadError("YouTube API returned non-object JSON")
         return payload
