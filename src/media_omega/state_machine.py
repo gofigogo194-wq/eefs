@@ -206,6 +206,19 @@ class StateTransitionEngine:
                     and evidence.plan_id != result[-1].evidence.plan_id
                 ):
                     raise RuntimeError("asset manifest plan does not match admitted plan")
+                if to_state is WorkflowState.VERIFIED and result:
+                    prior = result[-1]
+                    if evidence.plan_id != prior.evidence.plan_id:
+                        raise RuntimeError(
+                            "verification plan does not match admitted plan"
+                        )
+                    if (
+                        evidence.asset_manifest_refs
+                        != prior.evidence.asset_manifest_refs
+                    ):
+                        raise RuntimeError(
+                            "verification manifest does not match ASSETS_READY"
+                        )
                 try:
                     self._validate_contract(
                         entity_id,
@@ -282,6 +295,19 @@ class StateTransitionEngine:
                 prior = self.history(entity_id)[-1]
                 if evidence.plan_id != prior.evidence.plan_id:
                     raise ValueError("asset manifest plan does not match admitted plan")
+            if to_state is WorkflowState.VERIFIED:
+                prior = self.history(entity_id)[-1]
+                if evidence.plan_id != prior.evidence.plan_id:
+                    raise ValueError(
+                        "verification plan does not match admitted plan"
+                    )
+                if (
+                    evidence.asset_manifest_refs
+                    != prior.evidence.asset_manifest_refs
+                ):
+                    raise ValueError(
+                        "verification manifest does not match ASSETS_READY"
+                    )
             self._validate_contract(entity_id, to_state, evidence, reason)
             transition = StateTransition(
                 entity_id=entity_id,
@@ -364,7 +390,8 @@ class StateTransitionEngine:
                 evidence.evidence_refs,
                 "collected",
                 entity_id,
-                before_event_id=before_event_id,
+                "intelligence_pipeline.",
+                before_event_id,
             )
 
         elif to_state is WorkflowState.PLANNED:
@@ -379,10 +406,16 @@ class StateTransitionEngine:
             )
             if records[0].payload.get("plan_id") != evidence.plan_id:
                 raise ValueError("plan evidence does not match plan_id")
+            if records[0].payload.get("policy_decision") != "ACCEPT":
+                raise ValueError("plan evidence must record policy ACCEPT")
 
         elif to_state is WorkflowState.ASSETS_READY:
             if not evidence.plan_id.strip():
                 raise ValueError("asset manifest plan_id is required")
+            if len(evidence.asset_manifest_refs) != 1:
+                raise ValueError(
+                    "canonical asset state requires exactly one asset manifest"
+                )
             records = self._require_records(
                 evidence.asset_manifest_refs,
                 "asset manifest",
@@ -408,6 +441,12 @@ class StateTransitionEngine:
                     raise ValueError("asset manifest provider is required")
 
         elif to_state is WorkflowState.VERIFIED:
+            if not evidence.plan_id.strip():
+                raise ValueError("verification plan_id is required")
+            if len(evidence.asset_manifest_refs) != 1:
+                raise ValueError(
+                    "verification requires exactly one asset manifest"
+                )
             records = self._require_records(
                 (evidence.verification_ref,) if evidence.verification_ref else (),
                 "verification",
@@ -419,6 +458,17 @@ class StateTransitionEngine:
                 raise ValueError("verified state requires policy ACCEPT")
             if records[0].payload.get("decision") != "ACCEPT":
                 raise ValueError("verification evidence must record ACCEPT")
+            if records[0].payload.get("plan_id") != evidence.plan_id:
+                raise ValueError(
+                    "verification evidence does not match plan_id"
+                )
+            if (
+                records[0].payload.get("asset_manifest_ref")
+                != evidence.asset_manifest_refs[0]
+            ):
+                raise ValueError(
+                    "verification evidence does not match asset manifest"
+                )
 
         elif to_state is WorkflowState.SCHEDULED:
             if not evidence.schedule_id.strip():
