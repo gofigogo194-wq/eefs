@@ -48,3 +48,23 @@ def test_scout_rejects_impossible_history():
 def test_scout_enforces_query_budget():
     with pytest.raises(ValueError):
         ScoutPolicy(query_budget=21).validate()
+
+
+def test_known_query_cannot_reappear_as_exploration_variant():
+    result = choose_queries(
+        [ScoutTopic("Ambient Sleep", prior_score=0.9)],
+        [" ambient   sleep ", "robotics"],
+        ScoutPolicy(query_budget=2, exploration_fraction=0.5),
+    )
+    assert len(result.queries) == 2
+    assert sum("ambient" in q.casefold() for q in result.queries) == 1
+    assert "robotics" in result.queries
+
+
+def test_duplicate_known_queries_are_rejected_as_ambiguous_state():
+    with pytest.raises(ValueError, match="unique"):
+        choose_queries(
+            [ScoutTopic("AI Tools"), ScoutTopic(" ai   tools ")],
+            [],
+            ScoutPolicy(query_budget=2, exploration_fraction=0),
+        )
