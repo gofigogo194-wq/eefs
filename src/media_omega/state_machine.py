@@ -200,6 +200,12 @@ class StateTransitionEngine:
                     raise RuntimeError("state transition history is inconsistent")
                 if from_state is None or to_state not in _ALLOWED[from_state]:
                     raise RuntimeError("state transition history contains illegal edge")
+                if (
+                    to_state is WorkflowState.ASSETS_READY
+                    and result
+                    and evidence.plan_id != result[-1].evidence.plan_id
+                ):
+                    raise RuntimeError("asset manifest plan does not match admitted plan")
                 try:
                     self._validate_contract(
                         entity_id,
@@ -272,6 +278,10 @@ class StateTransitionEngine:
                 raise ValueError(
                     f"invalid state transition: {current.value} -> {to_state.value}"
                 )
+            if to_state is WorkflowState.ASSETS_READY:
+                prior = self.history(entity_id)[-1]
+                if evidence.plan_id != prior.evidence.plan_id:
+                    raise ValueError("asset manifest plan does not match admitted plan")
             self._validate_contract(entity_id, to_state, evidence, reason)
             transition = StateTransition(
                 entity_id=entity_id,
@@ -371,6 +381,8 @@ class StateTransitionEngine:
                 raise ValueError("plan evidence does not match plan_id")
 
         elif to_state is WorkflowState.ASSETS_READY:
+            if not evidence.plan_id.strip():
+                raise ValueError("asset manifest plan_id is required")
             records = self._require_records(
                 evidence.asset_manifest_refs,
                 "asset manifest",
@@ -379,6 +391,8 @@ class StateTransitionEngine:
                 before_event_id,
             )
             for record in records:
+                if record.payload.get("plan_id") != evidence.plan_id:
+                    raise ValueError("asset manifest does not match plan_id")
                 assets = record.payload.get("assets")
                 if not isinstance(assets, list) or not assets:
                     raise ValueError("asset manifest must contain assets")
