@@ -81,7 +81,7 @@ class CreatorBaselineCache:
                 continue
             observed_at = str(detail["observed_at"])
             sample = sample_at(
-                int(detail["views"]),
+                detail["views"],
                 str(detail["published_at"]),
                 observed_at,
             )
