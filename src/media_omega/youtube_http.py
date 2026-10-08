@@ -140,7 +140,7 @@ class YouTubeHTTPTransport:
         result: dict[str, int] = {}
         for item in self._items(payload):
             try:
-                item_id = str(item["id"]).strip()
+                item_id = self._required_text(item.get("id"), "id")
                 if item_id not in clean:
                     raise YouTubePayloadError("videos.list returned an unexpected id")
                 if item_id in result:
@@ -163,7 +163,7 @@ class YouTubeHTTPTransport:
         result: dict[str, dict[str, object]] = {}
         for item in self._items(payload):
             try:
-                item_id = str(item["id"]).strip()
+                item_id = self._required_text(item.get("id"), "id")
                 if item_id not in clean:
                     raise YouTubePayloadError("videos.list returned an unexpected id")
                 if item_id in result:
