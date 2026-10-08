@@ -428,17 +428,83 @@ class StateTransitionEngine:
                     raise ValueError("asset manifest does not match plan_id")
                 assets = record.payload.get("assets")
                 provider = record.payload.get("provider")
-                if not isinstance(assets, list) or not assets:
-                    raise ValueError("asset manifest must contain assets")
-                if any(
-                    not isinstance(asset, str) or not asset.strip()
-                    for asset in assets
-                ):
-                    raise ValueError("asset manifest assets must be non-empty strings")
-                if len(set(assets)) != len(assets):
-                    raise ValueError("asset manifest assets must be unique")
                 if not isinstance(provider, str) or not provider.strip():
                     raise ValueError("asset manifest provider is required")
+                if not isinstance(assets, list) or not assets:
+                    raise ValueError("asset manifest must contain assets")
+
+                if record.receipt.evidence_type == "asset_manifest.v1":
+                    if before_event_id is None:
+                        raise ValueError(
+                            "legacy asset manifest is read-only"
+                        )
+                    if any(
+                        not isinstance(asset, str) or not asset.strip()
+                        for asset in assets
+                    ):
+                        raise ValueError(
+                            "legacy asset manifest assets are invalid"
+                        )
+                    if len(set(assets)) != len(assets):
+                        raise ValueError(
+                            "legacy asset manifest assets must be unique"
+                        )
+                    continue
+
+                if record.receipt.evidence_type != "asset_manifest.v2":
+                    raise ValueError("unsupported asset manifest version")
+                if record.payload.get("version") != "asset_manifest.v2":
+                    raise ValueError("asset manifest payload version is invalid")
+
+                asset_ids: set[str] = set()
+                asset_paths: set[str] = set()
+                for asset in assets:
+                    if not isinstance(asset, dict):
+                        raise ValueError(
+                            "asset manifest records must be objects"
+                        )
+                    asset_id = asset.get("asset_id")
+                    path = asset.get("path")
+                    media_type = asset.get("media_type")
+                    digest = asset.get("sha256")
+                    size_bytes = asset.get("size_bytes")
+                    provenance = asset.get("provenance")
+                    if not isinstance(asset_id, str) or not asset_id.strip():
+                        raise ValueError("asset_id is required")
+                    if not isinstance(path, str) or not path.strip():
+                        raise ValueError("asset path is required")
+                    if (
+                        not isinstance(media_type, str)
+                        or not media_type.strip()
+                        or "/" not in media_type
+                    ):
+                        raise ValueError("asset media_type is invalid")
+                    if (
+                        not isinstance(digest, str)
+                        or len(digest) != 64
+                        or any(
+                            character not in "0123456789abcdef"
+                            for character in digest
+                        )
+                    ):
+                        raise ValueError("asset sha256 is invalid")
+                    if (
+                        isinstance(size_bytes, bool)
+                        or not isinstance(size_bytes, int)
+                        or size_bytes <= 0
+                    ):
+                        raise ValueError("asset size_bytes is invalid")
+                    if (
+                        not isinstance(provenance, str)
+                        or not provenance.strip()
+                    ):
+                        raise ValueError("asset provenance is required")
+                    if asset_id in asset_ids:
+                        raise ValueError("asset ids must be unique")
+                    if path in asset_paths:
+                        raise ValueError("asset paths must be unique")
+                    asset_ids.add(asset_id)
+                    asset_paths.add(path)
 
         elif to_state is WorkflowState.VERIFIED:
             if not evidence.plan_id.strip():
@@ -447,6 +513,13 @@ class StateTransitionEngine:
                 raise ValueError(
                     "verification requires exactly one asset manifest"
                 )
+            self._require_records(
+                evidence.asset_manifest_refs,
+                "verified asset manifest",
+                entity_id,
+                "asset_manifest.v2",
+                before_event_id,
+            )
             records = self._require_records(
                 (evidence.verification_ref,) if evidence.verification_ref else (),
                 "verification",
