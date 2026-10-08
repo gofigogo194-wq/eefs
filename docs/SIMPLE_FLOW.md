@@ -8,8 +8,8 @@ MEDIA Ω stays intentionally simple. Reliability comes from clear contracts and 
 2. **OBSERVE** — persist factual snapshots and provenance.
 3. **COMPARE** — measure momentum, creator baseline, and peer context.
 4. **SELECT** — one canonical Intelligence signal ranks candidates.
-5. **PLAN + VERIFY** — create one plan, verify rights/policy/budget/assets.
-6. **PUBLISH** — only through an approved idempotent platform adapter.
+5. **PLAN + POLICY CHECK** — create one plan and check required fields, declared rights/originality, platform, and budget.
+6. **CREATE + VERIFY + PUBLISH** — create original assets, verify the actual assets, then publish only through an approved idempotent platform adapter.
 7. **MEASURE + LEARN** — record outcomes and update versioned strategy from evidence.
 
 ## Simplicity rules
@@ -36,8 +36,8 @@ Everything inside those actions is implementation detail. New features must exte
 
 The implemented and tested live path currently ends at:
 
-DISCOVER → OBSERVE → COMPARE → SELECT → PLAN + POLICY VERIFY → PLANNED
+DISCOVER → OBSERVE → COMPARE → SELECT → PLAN + POLICY CHECK → PLANNED
 
-PLAN + POLICY VERIFY is deliberately one step: one selected opportunity gets one plan. If rights, platform, required fields, or budget fail, the opportunity is BLOCKED. If they pass, the exact plan is journaled and the workflow reaches PLANNED.
+PLAN + POLICY CHECK is deliberately one step: one selected opportunity gets one exact plan. If the plan declarations, platform, required fields, or budget fail, the opportunity is BLOCKED. If they pass, the exact plan is journaled and the workflow reaches PLANNED. This is not yet proof that generated assets are original or licensed; actual asset verification stays after creation.
 
 Asset creation, final asset verification, publishing, measurement, and learning remain future stages. They must extend the same linear flow instead of creating parallel systems.
