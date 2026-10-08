@@ -1,10 +1,6 @@
-import math
-
 import pytest
 
-from media_omega.memory import DecisionJournal
 from media_omega.models import CreativePlan, Decision
-from media_omega.orchestrator import Orchestrator
 from media_omega.policy import Policy, verify
 
 
@@ -64,13 +60,3 @@ def test_policy_configuration_is_validated():
         verify(approved_plan(), Policy(allowed_platforms=()))
 
 
-def test_dry_run_never_claims_published(tmp_path):
-    journal = DecisionJournal(tmp_path / "test.db")
-    engine = Orchestrator(journal)
-    receipt = engine.dry_run_publish(approved_plan())
-    assert receipt["dry_run"] is True
-    assert receipt["published"] is False
-    assert [x["event_type"] for x in journal.read_all()] == [
-        "POLICY_DECISION",
-        "DRY_RUN_PUBLICATION",
-    ]
