@@ -94,7 +94,7 @@ def _intelligence_report(state_dir: str) -> int:
         "insufficient_snapshot_history_count": len(report.insufficient_snapshot_history),
         "insufficient_creator_history_count": len(report.insufficient_creator_history),
         "unreliable_creator_baseline_count": len(report.unreliable_creator_baseline),
-        "unreliable_interval_count": len(report.unreliable_interval),
+        "unreliable_history_count": len(report.unreliable_history),
         "signals": [
             {
                 "content_id": x.content_id,
