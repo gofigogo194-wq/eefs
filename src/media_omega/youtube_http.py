@@ -121,6 +121,8 @@ class YouTubeHTTPTransport:
                 if item_id in result:
                     raise YouTubePayloadError("videos.list returned a duplicate id")
                 result[item_id] = self._view_count(item["statistics"]["viewCount"])
+            except YouTubePayloadError:
+                raise
             except (KeyError, TypeError, ValueError) as exc:
                 raise YouTubePayloadError("invalid videos.list statistics payload") from exc
         return result
