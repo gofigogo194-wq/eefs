@@ -113,11 +113,8 @@ class Orchestrator:
         })
 
         if gate.decision is not Decision.ACCEPT:
-            self.states.transition(
-                entity_id,
-                WorkflowState.BLOCKED,
-                reason=";".join(gate.reasons),
-            )
+            # A plan-level failure must not permanently kill the opportunity.
+            # The system may submit a corrected/original plan later.
             return gate
 
         payload = asdict(plan)
