@@ -32,13 +32,13 @@ The system deliberately keeps one live path for each responsibility. Reliability
 
 The Candidate currently proves the read-only path:
 
-YouTube discovery → persisted observations → temporal momentum → age-normalized creator baseline v2 → peer-cohort diagnostics → IntelligenceSignal v4 → Orchestrator selection → one policy-checked CreativePlan → PLANNED state.
+YouTube discovery → persisted observations → temporal momentum → age-normalized creator baseline v2 → peer-cohort diagnostics → IntelligenceSignal v4 → Orchestrator selection → one policy-checked CreativePlan → one creator adapter → typed asset manifest → ASSETS_READY state.
 
 The former duplicate intelligence/scoring, scout, baseline-collection, momentum-report, generic-source, and stale YouTube wrapper paths have been retired. Workflow transitions are enforced by a centralized state engine. The decision journal uses SQLite append-only guards plus a tamper-evident hash chain. Evidence references are content-addressed and bind both evidence type and payload.
 
 Candidate CI currently gates Python 3.11–3.14 on Linux and Python 3.14 on Windows with pinned pytest.
 
-Planning is intentionally simple: one selected opportunity may admit one exact plan; a failed plan check does not permanently kill the opportunity and a corrected plan may be tried. No production creator or publisher exists yet. No autonomous public-publishing claim is made.
+Planning and creation are intentionally linear: one selected opportunity admits one exact plan, and one creator adapter may produce one manifest for that plan using the plan id as the idempotency key. A failed plan check does not permanently kill the opportunity. The creator contract is tested with a fake provider; no production creator or publisher exists yet. No autonomous public-publishing claim is made.
 
 ## Open-source reconnaissance
 
