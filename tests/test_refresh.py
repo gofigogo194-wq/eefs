@@ -1,3 +1,5 @@
+import pytest
+
 from media_omega.memory import DecisionJournal
 from media_omega.observations import ContentObservation
 from media_omega.refresh import refresh_tracked
@@ -44,3 +46,21 @@ def test_refresh_tracks_missing_without_fabricating_snapshot(tmp_path):
     )
     assert result.missing == 1
     assert len(store.history("youtube", "missing")) == 1
+
+
+def test_refresh_does_not_coerce_malformed_view_type(tmp_path):
+    store = SnapshotStore(tmp_path / "s.db")
+    store.append(obs("a"))
+
+    class BadStats:
+        def video_statistics(self, ids):
+            return {"a": "500"}
+
+    with pytest.raises(ValueError, match="views must"):
+        refresh_tracked(
+            store,
+            BadStats(),
+            DecisionJournal(tmp_path / "j.db"),
+            "2026-10-07T02:00:00+00:00",
+        )
+    assert len(store.history("youtube", "a")) == 1
