@@ -49,8 +49,10 @@ def test_refresh_cli_reuses_persistent_state(monkeypatch, tmp_path, capsys):
     from media_omega import cli
     from media_omega.observations import ContentObservation
     from media_omega.snapshots import SnapshotStore
+    from media_omega.memory import DecisionJournal
 
     store = SnapshotStore(tmp_path / "snapshots.db")
+    DecisionJournal(tmp_path / "journal.db")
     store.append(ContentObservation(
         "youtube", "abc", "creator",
         "2026-10-07T00:00:00+00:00",
@@ -75,8 +77,10 @@ def test_intelligence_cli_with_short_history_avoids_live_creator_fetch(tmp_path,
     from media_omega import cli
     from media_omega.observations import ContentObservation
     from media_omega.snapshots import SnapshotStore
+    from media_omega.memory import DecisionJournal
 
     store = SnapshotStore(tmp_path / "snapshots.db")
+    DecisionJournal(tmp_path / "journal.db")
     for hour, views in [(1, 100), (2, 200)]:
         store.append(ContentObservation(
             "youtube", "abc", "creator",
