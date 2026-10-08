@@ -169,3 +169,55 @@ def test_statistics_rejects_null_result_id():
 
     with pytest.raises(YouTubePayloadError, match="id"):
         transport.video_statistics(["v1"])
+
+
+def test_observation_rejects_non_string_cohort_fields():
+    bad = ContentObservation(
+        "youtube",
+        "target",
+        "creator",
+        "2026-10-07T00:00:00+00:00",
+        "2026-10-07T01:00:00+00:00",
+        100,
+        0,
+        "fixture://target",
+        discovery_query=123,
+    )
+    with pytest.raises(ValueError, match="discovery_query"):
+        bad.validate()
+
+
+def test_discovery_filters_non_string_identity_values():
+    from media_omega.discovery import DiscoveryItem, select_candidates
+
+    malformed = DiscoveryItem(
+        platform="youtube",
+        content_id=None,
+        creator_id="creator",
+        title="Valid title",
+        published_at="2026-10-07T00:00:00Z",
+        evidence_ref="fixture://evidence",
+    )
+    assert select_candidates([malformed]) == []
+
+
+def test_transport_wraps_invalid_json_as_payload_error(monkeypatch):
+    monkeypatch.setenv("YOUTUBE_API_KEY", "fixture-key")
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b"{not-json"
+
+    monkeypatch.setattr(
+        "media_omega.youtube_http.urlopen",
+        lambda request, timeout: Response(),
+    )
+
+    with pytest.raises(YouTubePayloadError, match="invalid JSON"):
+        YouTubeHTTPTransport().video_statistics(["v1"])
