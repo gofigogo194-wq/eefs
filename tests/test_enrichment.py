@@ -1,3 +1,5 @@
+import pytest
+
 from media_omega.discovery import DiscoveryItem
 from media_omega.enrichment import enrich_statistics
 from media_omega.memory import DecisionJournal
@@ -75,3 +77,17 @@ def test_legacy_creator_baseline_field_is_never_fabricated(tmp_path):
     )
     assert result.enriched == 1
     assert observations[0].creator_baseline_views == 0.0
+
+
+def test_enrichment_does_not_coerce_string_views_from_adapter(tmp_path):
+    class BadStats:
+        def video_statistics(self, ids):
+            return {ids[0]: "1000"}
+
+    with pytest.raises(ValueError, match="views must"):
+        enrich_statistics(
+            [item("a")],
+            BadStats(),
+            DecisionJournal(tmp_path / "e.db"),
+            observed_at="2026-10-07T01:00:00+00:00",
+        )
