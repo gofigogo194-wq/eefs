@@ -96,3 +96,31 @@ def test_large_creator_history_is_batched_by_transport_limit():
     assert [len(batch) for batch in t.details_calls] == [50, 50, 20]
     assert result.status == "READY"
     assert result.requested_ids == 120
+
+
+def test_duplicate_or_blank_creator_history_does_not_inflate_baseline_evidence():
+    class DuplicateTransport(CountingTransport):
+        def channel_recent_video_ids(self, creator_id):
+            self.history_calls.append(creator_id)
+            return [
+                f"{creator_id}-target",
+                f"{creator_id}-a",
+                f"{creator_id}-a",
+                " ",
+                f"{creator_id}-b",
+                f"{creator_id}-c",
+            ]
+
+    t = DuplicateTransport()
+    result = CreatorBaselineCache(t).get("creator", "creator-target")
+    assert result.status == "READY"
+    assert result.requested_ids == 3
+    assert result.returned_stats == 3
+    assert result.baseline.sample_count == 3
+    assert len(t.details_calls) == 1
+    assert t.details_calls[0] == (
+        "creator-target",
+        "creator-a",
+        "creator-b",
+        "creator-c",
+    )
