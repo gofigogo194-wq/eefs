@@ -1,3 +1,5 @@
+from dataclasses import asdict
+
 import pytest
 
 from media_omega.intelligence_pipeline import IntelligenceSignal
@@ -22,13 +24,27 @@ def signal(content_id, score, evidence=0.5, status="READY", source_refs=("fixtur
     )
 
 
+def report_signals(journal, signals):
+    journal.append("INTELLIGENCE_REPORT", {
+        "ready": [asdict(value) for value in signals],
+        "insufficient_snapshot_history": [],
+        "insufficient_creator_history": [],
+        "unreliable_creator_baseline": [],
+        "unreliable_history": [],
+        "required_snapshots": 3,
+        "creator_baseline_cache_entries": 0,
+    })
+
+
 def test_orchestrator_selects_and_admits_canonical_intelligence_signal(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     engine = Orchestrator(journal)
-    winner = engine.choose_intelligence([
+    candidates = [
         signal("slow", 0.4, 0.9),
         signal("fast", 0.8, 0.7),
-    ])
+    ]
+    report_signals(journal, candidates)
+    winner = engine.choose_intelligence(candidates)
     assert winner.content_id == "fast"
     assert engine.states.current_state("youtube:fast") is WorkflowState.EVIDENCE_COLLECTED
 
@@ -45,8 +61,12 @@ def test_orchestrator_selects_and_admits_canonical_intelligence_signal(tmp_path)
 def test_repeat_selection_does_not_regress_or_duplicate_state(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     engine = Orchestrator(journal)
-    engine.choose_intelligence([signal("fast", 0.8)])
-    engine.choose_intelligence([signal("fast", 0.9)])
+    first = signal("fast", 0.8)
+    second = signal("fast", 0.9)
+    report_signals(journal, [first])
+    engine.choose_intelligence([first])
+    report_signals(journal, [second])
+    engine.choose_intelligence([second])
     assert engine.states.current_state("youtube:fast") is WorkflowState.EVIDENCE_COLLECTED
     assert [x["event_type"] for x in journal.read_all()].count("STATE_TRANSITION") == 2
 
@@ -69,10 +89,21 @@ def test_orchestrator_rejects_signal_without_source_provenance(tmp_path):
     assert journal.read_all() == []
 
 
+def test_orchestrator_rejects_ready_signal_not_emitted_by_intelligence_report(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    engine = Orchestrator(journal)
+    fabricated = signal("fabricated", 999.0)
+    with pytest.raises(ValueError, match="journaled report"):
+        engine.choose_intelligence([fabricated])
+    assert journal.read_all() == []
+
+
 def selected_engine(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     engine = Orchestrator(journal)
-    engine.choose_intelligence([signal("target", 1.0)])
+    candidate = signal("target", 1.0)
+    report_signals(journal, [candidate])
+    engine.choose_intelligence([candidate])
     return journal, engine
 
 
