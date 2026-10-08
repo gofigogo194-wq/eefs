@@ -1,6 +1,7 @@
 from media_omega.discovery import DiscoveryPolicy
 from media_omega.intelligence_report import analyze_intelligence
 from media_omega.memory import DecisionJournal
+from media_omega.models import CreativePlan, Decision
 from media_omega.orchestrator import Orchestrator
 from media_omega.refresh import refresh_tracked
 from media_omega.runtime import run_readonly_cycle
@@ -88,8 +89,25 @@ def test_current_readonly_path_reaches_evidence_collected_without_publish(tmp_pa
         is WorkflowState.EVIDENCE_COLLECTED
     )
 
+    gate = orchestrator.plan_selected(CreativePlan(
+        opportunity_id="youtube:target",
+        platform="youtube",
+        format="long-form",
+        title="Original ambient concept",
+        original=True,
+        rights_confirmed=True,
+        estimated_cost=1.0,
+        id="plan-target",
+    ))
+    assert gate.decision is Decision.ACCEPT
+    assert (
+        orchestrator.states.current_state("youtube:target")
+        is WorkflowState.PLANNED
+    )
+
     event_types = [event["event_type"] for event in journal.read_all()]
     assert "INTELLIGENCE_SELECTION" in event_types
-    assert event_types.count("STATE_TRANSITION") == 2
+    assert event_types.count("STATE_TRANSITION") == 3
+    assert "PLAN_POLICY_DECISION" in event_types
     assert "DRY_RUN_PUBLICATION" not in event_types
     assert journal.verify_chain() is True
