@@ -8,7 +8,7 @@ MEDIA Ω is not a "make N videos per day" bot. It is a goal-directed media opera
 
 There is exactly one live opportunity-decision path in the current Candidate:
 
-YouTube read-only evidence → persisted observations → temporal momentum → age-normalized creator baseline v2 → peer-cohort diagnostics → IntelligenceSignal v4 → rank_signals → Orchestrator.choose_intelligence → EVIDENCE_COLLECTED → one policy-checked CreativePlan → PLANNED.
+YouTube read-only evidence → persisted observations → temporal momentum → age-normalized creator baseline v2 → peer-cohort diagnostics → IntelligenceSignal v4 → rank_signals → Orchestrator.choose_intelligence → EVIDENCE_COLLECTED → one policy-checked CreativePlan → PLANNED → one file-backed AssetManifest v2 → ASSETS_READY → one Verification Gate → VERIFIED.
 
 The former parallel modules `intelligence.py`, `evaluation.py`, `ranking.py`, and `scoring.py` were retired. They must not be reintroduced as a second scoring brain. New live opportunity features must enter through the versioned canonical `IntelligenceSignal` contract and its evidence/tests.
 
@@ -39,10 +39,10 @@ Terminal rejection/block paths are explicit and require a reason. State history 
 Transition contracts currently require:
 - every referenced evidence record to belong to the same workflow entity;
 - evidence to exist in the journal before the transition event it authorizes, so later evidence cannot retroactively legitimize an earlier transition;
-- EVIDENCE_COLLECTED: journal-verified evidence;
-- PLANNED: matching typed creative-plan evidence;
-- ASSETS_READY: typed asset-manifest evidence containing assets;
-- VERIFIED: typed verification evidence whose payload records ACCEPT;
+- EVIDENCE_COLLECTED: journal-verified canonical Intelligence evidence;
+- PLANNED: matching typed creative-plan evidence whose payload records policy ACCEPT;
+- ASSETS_READY: exactly one typed AssetManifest v2 bound to the admitted plan, with unique asset ids/paths, SHA256, positive byte size, media type, provider, and provenance;
+- VERIFIED: typed verification evidence whose payload records ACCEPT and is bound to the exact plan and exact ASSETS_READY manifest;
 - SCHEDULED: typed schedule evidence matching the schedule id;
 - PUBLISHED: typed publication receipt whose payload confirms `published=true`;
 - MEASURED: typed measurement evidence;
@@ -62,10 +62,12 @@ Peer cohort v1 tracks query provenance, platform, content format when known, and
 Current minimal implementation. A selected opportunity can admit exactly one CreativePlan. The plan must pass the configured policy gate, is journaled as typed evidence, and then advances to PLANNED. A failed plan attempt leaves the selected opportunity retryable. Exact replay is idempotent; a changed plan cannot silently replace it. This gate validates plan declarations and budget/platform rules, not the final generated assets.
 
 ### 5. Creator Pipeline
-Current minimal contract: one admitted plan is sent to one creator adapter with the plan id as an idempotency key. The adapter returns non-empty unique asset references. Those references are bound to the admitted plan in one typed asset manifest before ASSETS_READY is allowed. Current CI uses a deterministic fake creator; no production generation provider is claimed yet.
+Current minimal contract: one admitted plan is sent to one creator adapter with the plan id as an idempotency key. The adapter returns typed CreatedAsset values pointing at local files. MEDIA Ω independently resolves those files, rejects missing/empty output, computes SHA256 and byte size, and records one AssetManifest v2 with media type, provider, and provenance before ASSETS_READY is allowed. Current CI uses a deterministic local creator that writes real test files; no production generation provider is claimed yet.
 
 ### 6. Verification Gate
-Current policy checks fail closed on originality/rights by default, required plan identity, platform allowance, and finite budget limits. Future media verification must produce typed evidence before VERIFIED can be entered.
+Implemented as one canonical gate. It resolves the exact admitted AssetManifest v2, rereads the real files, and checks entity/plan binding, existence, non-empty bytes, SHA256, size, media type, provenance, and a minimal platform-primary-media constraint. Only an ACCEPT verification.v1 receipt bound to that exact manifest can advance ASSETS_READY → VERIFIED. Missing, deleted, changed, malformed, or platform-incompatible assets fail closed and leave the workflow outside VERIFIED.
+
+This gate proves concrete file/integrity/provenance properties only. It does not claim independent originality verification, ownership, licensing certainty, or copyright certainty.
 
 ### 7. Publisher
 Not implemented for production. Future platform adapters must be idempotent, dry-run by default, rate-limit aware, and produce a publication receipt. Only a receipt that explicitly confirms publication can move the state machine to PUBLISHED.
@@ -90,7 +92,7 @@ Higher autonomy is earned through target tests and explicit capability grants; i
 
 The current deterministic E2E test covers:
 
-Scout/discovery → enrichment → snapshots → two refreshes → creator baseline → momentum → Intelligence v4 → Orchestrator → typed evidence receipt → one CreativePlan → policy check → one creator adapter → typed asset manifest → ASSETS_READY.
+Scout/discovery → enrichment → snapshots → two refreshes → creator baseline → momentum → Intelligence v4 → Orchestrator → typed evidence receipt → one CreativePlan → policy check → one deterministic creator → real local files → AssetManifest v2 with SHA256/size/provenance → ASSETS_READY → real file verification → verification.v1 → VERIFIED.
 
 Candidate CI gates:
 - Linux: Python 3.11, 3.12, 3.13, 3.14;
@@ -100,4 +102,4 @@ Candidate CI gates:
 - source compilation;
 - full test suite.
 
-The proof boundary stops before Strategy/Creator/real Publisher/Measurement/Learning implementation.
+The proof boundary stops at VERIFIED. Production media generation, Publisher, Measurement, and Learning are not yet proven or implemented as live production paths.
