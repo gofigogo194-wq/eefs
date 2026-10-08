@@ -112,17 +112,24 @@ def test_selected_opportunity_advances_through_one_plan_policy_gate(tmp_path):
     assert payload["policy_decision"] == "ACCEPT"
 
 
-def test_blocked_plan_stops_opportunity_instead_of_creating_planned_state(tmp_path):
+def test_blocked_plan_attempt_does_not_poison_selected_opportunity(tmp_path):
     journal, engine = selected_engine(tmp_path)
     gate = engine.plan_selected(plan(rights_confirmed=False))
 
     assert gate.decision is Decision.BLOCK
-    assert engine.states.current_state("youtube:target") is WorkflowState.BLOCKED
+    assert (
+        engine.states.current_state("youtube:target")
+        is WorkflowState.EVIDENCE_COLLECTED
+    )
     assert not any(
         event["event_type"] == "EVIDENCE"
         and event["payload"].get("evidence_type") == "creative_plan.v1"
         for event in journal.read_all()
     )
+
+    corrected = engine.plan_selected(plan("plan-2", rights_confirmed=True))
+    assert corrected.decision is Decision.ACCEPT
+    assert engine.states.current_state("youtube:target") is WorkflowState.PLANNED
 
 
 def test_same_plan_replay_is_idempotent(tmp_path):
