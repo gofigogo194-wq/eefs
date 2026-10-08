@@ -731,3 +731,21 @@ def test_new_assets_ready_transition_rejects_legacy_manifest_v1(tmp_path):
                 asset_manifest_refs=(legacy,),
             ),
         )
+
+
+
+def test_verified_rejects_accept_flag_without_verification_evidence(tmp_path):
+    journal = DecisionJournal(tmp_path / "journal.db")
+    engine = StateTransitionEngine(journal)
+    asset_ref = advance_to_assets_ready(journal, engine)
+
+    with pytest.raises(ValueError, match="verification evidence is required"):
+        engine.transition(
+            "x",
+            WorkflowState.VERIFIED,
+            TransitionEvidence(
+                plan_id="plan-1",
+                asset_manifest_refs=(asset_ref,),
+                policy_decision="ACCEPT",
+            ),
+        )
