@@ -33,8 +33,12 @@ def momentum(history: list[ContentObservation], minimum_interval_seconds: float 
     ordered = sorted(history, key=lambda x: _time(x.observed_at))
     content_ids = {x.content_id for x in ordered}
     platforms = {x.platform for x in ordered}
+    creator_ids = {x.creator_id for x in ordered}
+    published_instants = {_time(x.published_at) for x in ordered}
     if len(content_ids) != 1 or len(platforms) != 1:
         raise ValueError("momentum history must describe one content item on one platform")
+    if len(creator_ids) != 1 or len(published_instants) != 1:
+        raise ValueError("momentum history contains content identity drift")
     for item in ordered:
         item.validate()
 
