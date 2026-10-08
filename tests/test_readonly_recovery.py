@@ -1,7 +1,12 @@
+import sqlite3
+
+import pytest
+
 from media_omega.discovery import DiscoveryPolicy
 from media_omega.intelligence_report import analyze_intelligence
 from media_omega.memory import DecisionJournal
 from media_omega.orchestrator import Orchestrator
+from media_omega.observations import ContentObservation
 from media_omega.refresh import refresh_tracked
 from media_omega.runtime import run_readonly_cycle
 from media_omega.scout import ScoutPolicy, ScoutTopic
@@ -134,3 +139,65 @@ def test_restart_reopens_state_and_continues_to_same_intelligence_boundary(tmp_p
     )
     assert SnapshotStore(snapshot_path).verify_integrity() is True
     assert reopened.journal.verify_chain() is True
+
+
+def test_partial_refresh_does_not_fabricate_missing_video_snapshot(tmp_path):
+    store = SnapshotStore(tmp_path / "snapshots.db")
+    journal = DecisionJournal(tmp_path / "journal.db")
+    for content_id in ("a", "b"):
+        store.append(ContentObservation(
+            "youtube",
+            content_id,
+            "creator",
+            "2026-10-07T00:00:00+00:00",
+            "2026-10-07T01:00:00+00:00",
+            100,
+            0,
+            f"fixture://{content_id}/1",
+        ))
+
+    class PartialTransport:
+        def video_statistics(self, ids):
+            return {"a": 200, "unexpected": 999}
+
+    result = refresh_tracked(
+        store,
+        PartialTransport(),
+        journal,
+        "2026-10-07T02:00:00+00:00",
+    )
+
+    assert result.tracked == 2
+    assert result.returned == 1
+    assert result.missing == 1
+    assert result.new_snapshots == 1
+    assert len(store.history("youtube", "a")) == 2
+    assert len(store.history("youtube", "b")) == 1
+
+
+def test_corrupt_snapshot_store_refuses_restart(tmp_path):
+    path = tmp_path / "snapshots.db"
+    store = SnapshotStore(path)
+    store.append(ContentObservation(
+        "youtube",
+        "target",
+        "creator",
+        "2026-10-07T00:00:00+00:00",
+        "2026-10-07T01:00:00+00:00",
+        100,
+        0,
+        "fixture://target/1",
+    ))
+
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER snapshots_append_only_update")
+        payload = db.execute(
+            "SELECT payload FROM snapshots WHERE content_id='target'"
+        ).fetchone()[0]
+        db.execute(
+            "UPDATE snapshots SET payload=? WHERE content_id='target'",
+            (payload.replace('"views":100', '"views":999'),),
+        )
+
+    with pytest.raises(RuntimeError, match="hash"):
+        SnapshotStore(path)
