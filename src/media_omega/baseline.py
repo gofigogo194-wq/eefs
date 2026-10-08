@@ -23,8 +23,8 @@ class CreatorPerformanceSample:
 
     @property
     def views_per_hour(self) -> float:
-        if self.views < 0:
-            raise ValueError("views cannot be negative")
+        if isinstance(self.views, bool) or not isinstance(self.views, int) or self.views < 0:
+            raise ValueError("views must be a non-negative integer")
         if not isfinite(self.age_hours) or self.age_hours < _MIN_RATE_AGE_HOURS:
             raise ValueError("age_hours is too short or non-finite for reliable rate")
         return self.views / self.age_hours
@@ -44,8 +44,8 @@ def sample_at(
     published_at: str,
     observed_at: str,
 ) -> CreatorPerformanceSample | None:
-    if views < 0:
-        raise ValueError("views cannot be negative")
+    if isinstance(views, bool) or not isinstance(views, int) or views < 0:
+        raise ValueError("views must be a non-negative integer")
     published = _time(published_at)
     observed = _time(observed_at)
     age_seconds = (observed - published).total_seconds()
