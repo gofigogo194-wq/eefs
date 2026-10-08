@@ -150,3 +150,10 @@ def test_plan_requires_previously_selected_opportunity(tmp_path):
     with pytest.raises(ValueError, match="selected before planning"):
         engine.plan_selected(plan())
     assert journal.read_all() == []
+
+
+def test_same_plan_id_with_changed_payload_is_not_treated_as_idempotent(tmp_path):
+    _, engine = selected_engine(tmp_path)
+    engine.plan_selected(plan("plan-1", title="Original concept"))
+    with pytest.raises(ValueError, match="replay differs"):
+        engine.plan_selected(plan("plan-1", title="Changed concept"))
