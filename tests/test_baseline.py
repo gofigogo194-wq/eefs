@@ -90,3 +90,13 @@ def test_sample_at_drops_sub_minute_history_instead_of_inflating_vph():
         "2026-10-07T11:59:30+00:00",
         "2026-10-07T12:00:00+00:00",
     ) is None
+
+
+@pytest.mark.parametrize("views", ["100", 1.5, True])
+def test_creator_sample_does_not_coerce_view_types(views):
+    with pytest.raises(ValueError, match="views must"):
+        sample_at(
+            views,
+            "2026-10-07T10:00:00+00:00",
+            "2026-10-07T12:00:00+00:00",
+        )
