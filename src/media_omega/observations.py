@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 
 
 @dataclass(frozen=True)
@@ -20,12 +21,23 @@ class ContentObservation:
     content_format: str = "unknown"
 
     def validate(self) -> None:
-        if not self.platform.strip() or not self.content_id.strip() or not self.creator_id.strip():
-            raise ValueError("platform, content_id and creator_id are required")
-        if not self.evidence_ref.strip():
-            raise ValueError("evidence_ref is required")
-        if self.views < 0 or self.creator_baseline_views < 0:
-            raise ValueError("view counts cannot be negative")
+        for value, name in (
+            (self.platform, "platform"),
+            (self.content_id, "content_id"),
+            (self.creator_id, "creator_id"),
+            (self.evidence_ref, "evidence_ref"),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} is required")
+        if isinstance(self.views, bool) or not isinstance(self.views, int) or self.views < 0:
+            raise ValueError("views must be a non-negative integer")
+        if (
+            isinstance(self.creator_baseline_views, bool)
+            or not isinstance(self.creator_baseline_views, (int, float))
+            or not isfinite(float(self.creator_baseline_views))
+            or self.creator_baseline_views < 0
+        ):
+            raise ValueError("creator_baseline_views must be finite and non-negative")
         published = datetime.fromisoformat(self.published_at.replace("Z", "+00:00"))
         observed = datetime.fromisoformat(self.observed_at.replace("Z", "+00:00"))
         if published.tzinfo is None or observed.tzinfo is None:
