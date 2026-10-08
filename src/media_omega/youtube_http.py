@@ -9,7 +9,9 @@ from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from .youtube import YouTubePayloadError
+
+class YouTubePayloadError(ValueError):
+    """YouTube API payload violated the read-only transport contract."""
 
 
 @dataclass(frozen=True)
