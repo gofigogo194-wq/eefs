@@ -43,6 +43,7 @@ def _semantic_digest(payload: dict) -> str:
 class SnapshotStore:
     def __init__(self, path: str | Path):
         self.path = str(path)
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
     def _connect(self) -> sqlite3.Connection:
@@ -175,8 +176,19 @@ class SnapshotStore:
             "payload_sha256,semantic_sha256 FROM snapshots "
             "ORDER BY platform,content_id,observed_at"
         ).fetchall()
+        identities: dict[tuple[str, str], tuple[str, str]] = {}
         for row in rows:
-            self._decode_row(row)
+            observation = self._decode_row(row)
+            key = (observation.platform, observation.content_id)
+            identity = (
+                observation.creator_id,
+                _time(observation.published_at).isoformat(),
+            )
+            previous = identities.setdefault(key, identity)
+            if previous != identity:
+                raise RuntimeError(
+                    "snapshot history contains content identity drift"
+                )
 
     def verify_integrity(self) -> bool:
         try:
@@ -199,6 +211,23 @@ class SnapshotStore:
 
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            prior_identity_row = conn.execute(
+                "SELECT platform,content_id,observed_at,payload,"
+                "payload_sha256,semantic_sha256 FROM snapshots "
+                "WHERE platform=? AND content_id=? ORDER BY observed_at LIMIT 1",
+                (observation.platform, observation.content_id),
+            ).fetchone()
+            if prior_identity_row is not None:
+                prior = self._decode_row(prior_identity_row)
+                if (
+                    prior.creator_id != observation.creator_id
+                    or _time(prior.published_at)
+                    != _time(observation.published_at)
+                ):
+                    raise RuntimeError(
+                        "snapshot content identity drift for tracked content"
+                    )
+
             existing = conn.execute(
                 "SELECT platform,content_id,observed_at,payload,"
                 "payload_sha256,semantic_sha256 FROM snapshots "
