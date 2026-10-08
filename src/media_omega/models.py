@@ -31,12 +31,30 @@ class CreativePlan:
 
 
 @dataclass(frozen=True)
+class CreatedAsset:
+    asset_id: str
+    path: str
+    media_type: str
+    provenance: str
+
+
+@dataclass(frozen=True)
+class AssetRecord:
+    asset_id: str
+    path: str
+    media_type: str
+    sha256: str
+    size_bytes: int
+    provenance: str
+
+
+@dataclass(frozen=True)
 class AssetManifest:
     entity_id: str
     plan_id: str
-    assets: tuple[str, ...]
+    assets: tuple[AssetRecord, ...]
     provider: str
-    version: str = "asset_manifest.v1"
+    version: str = "asset_manifest.v2"
 
 
 @dataclass(frozen=True)
