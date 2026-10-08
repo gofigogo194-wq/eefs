@@ -31,6 +31,15 @@ class CreativePlan:
 
 
 @dataclass(frozen=True)
+class AssetManifest:
+    entity_id: str
+    plan_id: str
+    assets: tuple[str, ...]
+    provider: str
+    version: str = "asset_manifest.v1"
+
+
+@dataclass(frozen=True)
 class GateResult:
     decision: Decision
     reasons: tuple[str, ...]
