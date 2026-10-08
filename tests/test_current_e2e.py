@@ -1,7 +1,8 @@
 from media_omega.discovery import DiscoveryPolicy
+from media_omega.evidence import resolve_evidence
 from media_omega.intelligence_report import analyze_intelligence
 from media_omega.memory import DecisionJournal
-from media_omega.models import CreativePlan, Decision
+from media_omega.models import CreatedAsset, CreativePlan, Decision
 from media_omega.orchestrator import Orchestrator
 from media_omega.refresh import refresh_tracked
 from media_omega.runtime import run_readonly_cycle
@@ -46,12 +47,32 @@ class Transport:
 class Creator:
     name = "fixture-creator"
 
+    def __init__(self, root):
+        self.root = root
+
     def create(self, plan, idempotency_key):
         assert idempotency_key == plan.id
-        return ("artifact://video", "artifact://thumbnail")
+        video = self.root / "video.mp4"
+        thumbnail = self.root / "thumbnail.png"
+        video.write_bytes(b"deterministic-video-bytes")
+        thumbnail.write_bytes(b"deterministic-thumbnail-bytes")
+        return (
+            CreatedAsset(
+                asset_id="video",
+                path=str(video),
+                media_type="video/mp4",
+                provenance="fixture://creator/video",
+            ),
+            CreatedAsset(
+                asset_id="thumbnail",
+                path=str(thumbnail),
+                media_type="image/png",
+                provenance="fixture://creator/thumbnail",
+            ),
+        )
 
 
-def test_current_canonical_path_reaches_assets_ready_without_publish(tmp_path):
+def test_current_canonical_path_reaches_verified_without_publish(tmp_path):
     journal = DecisionJournal(tmp_path / "journal.db")
     snapshots = SnapshotStore(tmp_path / "snapshots.db")
     transport = Transport()
@@ -97,7 +118,7 @@ def test_current_canonical_path_reaches_assets_ready_without_publish(tmp_path):
         is WorkflowState.EVIDENCE_COLLECTED
     )
 
-    gate = orchestrator.plan_selected(CreativePlan(
+    plan = CreativePlan(
         opportunity_id="youtube:target",
         platform="youtube",
         format="long-form",
@@ -106,7 +127,8 @@ def test_current_canonical_path_reaches_assets_ready_without_publish(tmp_path):
         rights_confirmed=True,
         estimated_cost=1.0,
         id="plan-target",
-    ))
+    )
+    gate = orchestrator.plan_selected(plan)
     assert gate.decision is Decision.ACCEPT
     assert (
         orchestrator.states.current_state("youtube:target")
@@ -114,27 +136,52 @@ def test_current_canonical_path_reaches_assets_ready_without_publish(tmp_path):
     )
 
     manifest = orchestrator.create_assets(
-        CreativePlan(
-            opportunity_id="youtube:target",
-            platform="youtube",
-            format="long-form",
-            title="Original ambient concept",
-            original=True,
-            rights_confirmed=True,
-            estimated_cost=1.0,
-            id="plan-target",
-        ),
-        Creator(),
+        plan,
+        Creator(tmp_path),
     )
-    assert manifest.assets == ("artifact://video", "artifact://thumbnail")
+    assert [asset.asset_id for asset in manifest.assets] == [
+        "video",
+        "thumbnail",
+    ]
     assert (
         orchestrator.states.current_state("youtube:target")
         is WorkflowState.ASSETS_READY
     )
 
+    verification = orchestrator.verify_assets(plan)
+    assert verification.decision is Decision.ACCEPT
+    assert (
+        orchestrator.states.current_state("youtube:target")
+        is WorkflowState.VERIFIED
+    )
+
     event_types = [event["event_type"] for event in journal.read_all()]
     assert "INTELLIGENCE_SELECTION" in event_types
-    assert event_types.count("STATE_TRANSITION") == 4
+    assert event_types.count("STATE_TRANSITION") == 5
     assert "PLAN_POLICY_DECISION" in event_types
     assert "DRY_RUN_PUBLICATION" not in event_types
+    assert "PUBLICATION" not in event_types
     assert journal.verify_chain() is True
+    assert snapshots.verify_integrity() is True
+
+    reopened = Orchestrator(DecisionJournal(tmp_path / "journal.db"))
+    assert (
+        reopened.states.current_state("youtube:target")
+        is WorkflowState.VERIFIED
+    )
+    latest = reopened.states.history("youtube:target")[-1]
+    manifest_record = resolve_evidence(
+        reopened.journal,
+        latest.evidence.asset_manifest_refs[0],
+    )
+    verification_record = resolve_evidence(
+        reopened.journal,
+        latest.evidence.verification_ref,
+    )
+    assert manifest_record is not None
+    assert manifest_record.receipt.evidence_type == "asset_manifest.v2"
+    assert verification_record is not None
+    assert verification_record.receipt.evidence_type == "verification.v1"
+    assert verification_record.payload["decision"] == "ACCEPT"
+    assert "copyright" not in verification_record.payload["verified_properties"]
+    assert "originality" not in verification_record.payload["verified_properties"]
