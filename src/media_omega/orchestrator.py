@@ -6,7 +6,7 @@ import json
 from .evidence import record_evidence, resolve_evidence
 from .intelligence_pipeline import IntelligenceSignal, rank_signals
 from .memory import DecisionJournal
-from .models import CreativePlan, Decision, GateResult
+from .models import AssetManifest, CreativePlan, Decision, GateResult
 from .policy import Policy, verify
 from .state_machine import StateTransitionEngine, TransitionEvidence, WorkflowState
 
@@ -152,3 +152,80 @@ class Orchestrator:
             ),
         )
         return gate
+
+    def create_assets(self, plan: CreativePlan, creator: object) -> AssetManifest:
+        entity_id = plan.opportunity_id.strip()
+        if not entity_id:
+            raise ValueError("plan opportunity_id is required")
+
+        current = self.states.current_state(entity_id)
+        if current is WorkflowState.ASSETS_READY:
+            latest = self.states.history(entity_id)[-1]
+            if latest.evidence.plan_id != plan.id:
+                raise ValueError("assets belong to a different plan")
+            if len(latest.evidence.asset_manifest_refs) != 1:
+                raise RuntimeError("canonical creator path requires one asset manifest")
+            record = resolve_evidence(
+                self.journal,
+                latest.evidence.asset_manifest_refs[0],
+            )
+            if record is None:
+                raise RuntimeError("asset manifest evidence is missing")
+            return AssetManifest(
+                entity_id=entity_id,
+                plan_id=plan.id,
+                assets=tuple(record.payload["assets"]),
+                provider=str(record.payload["provider"]),
+            )
+
+        if current is not WorkflowState.PLANNED:
+            raise ValueError("opportunity must be PLANNED before asset creation")
+
+        planned = self.states.history(entity_id)[-1]
+        if planned.evidence.plan_id != plan.id:
+            raise ValueError("creator plan does not match admitted plan")
+        admitted = resolve_evidence(self.journal, planned.evidence.plan_ref)
+        expected = asdict(plan)
+        expected["entity_id"] = entity_id
+        expected["plan_id"] = plan.id
+        expected["policy_decision"] = Decision.ACCEPT.value
+        if admitted is None or admitted.payload != expected:
+            raise ValueError("creator plan differs from admitted plan")
+
+        provider = getattr(creator, "name", "")
+        create = getattr(creator, "create", None)
+        if not isinstance(provider, str) or not provider.strip():
+            raise ValueError("creator provider name is required")
+        if not callable(create):
+            raise ValueError("creator must provide create(plan, idempotency_key=...)")
+
+        raw_assets = create(plan, idempotency_key=plan.id)
+        if not isinstance(raw_assets, (list, tuple)) or not raw_assets:
+            raise ValueError("creator must return at least one asset")
+        assets = tuple(raw_assets)
+        if any(not isinstance(asset, str) or not asset.strip() for asset in assets):
+            raise ValueError("creator assets must be non-empty strings")
+        if len(set(assets)) != len(assets):
+            raise ValueError("creator assets must be unique")
+
+        manifest = AssetManifest(
+            entity_id=entity_id,
+            plan_id=plan.id,
+            assets=assets,
+            provider=provider.strip(),
+        )
+        receipt = record_evidence(
+            self.journal,
+            manifest.version,
+            manifest,
+        )
+        self.states.transition(
+            entity_id,
+            WorkflowState.ASSETS_READY,
+            TransitionEvidence(
+                plan_id=plan.id,
+                asset_manifest_refs=(receipt.evidence_ref,),
+            ),
+        )
+        return manifest
+
