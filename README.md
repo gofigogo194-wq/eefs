@@ -38,7 +38,7 @@ The former duplicate intelligence/scoring, scout, baseline-collection, momentum-
 
 Candidate CI currently gates Python 3.11–3.14 on Linux and Python 3.14 on Windows with pinned pytest.
 
-Planning is intentionally simple: one selected opportunity may admit one exact plan; blocked policy checks terminate that opportunity. No production creator or publisher exists yet. No autonomous public-publishing claim is made.
+Planning is intentionally simple: one selected opportunity may admit one exact plan; a failed plan check does not permanently kill the opportunity and a corrected plan may be tried. No production creator or publisher exists yet. No autonomous public-publishing claim is made.
 
 ## Open-source reconnaissance
 
