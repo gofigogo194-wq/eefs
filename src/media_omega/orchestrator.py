@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from .evidence import record_evidence
+from .evidence import record_evidence, resolve_evidence
 from .intelligence_pipeline import IntelligenceSignal, rank_signals
 from .memory import DecisionJournal
 from .models import CreativePlan, Decision, GateResult
@@ -93,7 +93,14 @@ class Orchestrator:
             latest = self.states.history(entity_id)[-1]
             if latest.evidence.plan_id != plan.id:
                 raise ValueError("opportunity already has a different plan")
-            return verify(plan, self.policy)
+            record = resolve_evidence(self.journal, latest.evidence.plan_ref)
+            expected = asdict(plan)
+            expected["entity_id"] = entity_id
+            expected["plan_id"] = plan.id
+            expected["policy_decision"] = Decision.ACCEPT.value
+            if record is None or record.payload != expected:
+                raise ValueError("plan replay differs from admitted plan")
+            return GateResult(Decision.ACCEPT, ("PLAN_ALREADY_ADMITTED",))
         if current is not WorkflowState.EVIDENCE_COLLECTED:
             raise ValueError("opportunity must be selected before planning")
 
