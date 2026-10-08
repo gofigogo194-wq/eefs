@@ -32,6 +32,10 @@ class ScoutPolicy:
             raise ValueError("exploration_fraction must be between 0 and 1")
 
 
+def _query_key(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
 def _posterior(topic: ScoutTopic) -> float:
     if not topic.query.strip():
         raise ValueError("scout query is required")
@@ -55,16 +59,32 @@ def choose_queries(
     explore_n = min(round(budget * policy.exploration_fraction), len(exploration_queries))
     exploit_n = budget - explore_n
 
+    known_keys: set[str] = set()
+    for topic in known_topics:
+        _posterior(topic)
+        key = _query_key(topic.query)
+        if key in known_keys:
+            raise ValueError("known scout queries must be unique")
+        known_keys.add(key)
+
     ranked = sorted(
         known_topics,
-        key=lambda topic: (-_posterior(topic), topic.query),
+        key=lambda topic: (-_posterior(topic), _query_key(topic.query)),
     )
     exploit = [topic.query for topic in ranked[:exploit_n]]
 
     # Deterministic ordering makes every decision reproducible for audit/tests.
+    exploration: dict[str, str] = {}
+    for value in exploration_queries:
+        if not isinstance(value, str):
+            raise ValueError("exploration queries must be strings")
+        clean = " ".join(value.split())
+        key = _query_key(clean)
+        if key and key not in known_keys:
+            exploration.setdefault(key, clean)
     unseen = sorted(
-        {q.strip() for q in exploration_queries if q.strip() and q.strip() not in exploit},
-        key=lambda q: sha256(q.encode("utf-8")).hexdigest(),
+        exploration.values(),
+        key=lambda q: sha256(_query_key(q).encode("utf-8")).hexdigest(),
     )
     explore = unseen[:explore_n]
 
