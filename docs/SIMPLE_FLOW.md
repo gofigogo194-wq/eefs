@@ -22,6 +22,16 @@ MEDIA Ω stays intentionally simple. Reliability comes from clear contracts and 
 - Tests prove boundaries; they do not justify adding architectural layers.
 - Strategy may become smarter, but the operating flow above does not change without evidence that it must.
 
+## Current read-only operation
+
+The implemented system is intentionally three actions, not a web of agents:
+
+1. **SCOUT** — discover candidates and store the first factual snapshot.
+2. **REFRESH** — collect later snapshots. Repeat until there is enough time-series evidence.
+3. **INTELLIGENCE** — compare, rank, and select only evidence-ready candidates.
+
+Everything inside those actions is implementation detail. New features must extend this line instead of creating a parallel route.
+
 ## Current live boundary
 
 The implemented and tested live path currently ends at:
