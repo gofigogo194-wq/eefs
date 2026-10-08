@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from .evidence import record_evidence
 from .intelligence_pipeline import IntelligenceSignal, rank_signals
 from .memory import DecisionJournal
-from .models import CreativePlan, Decision
+from .models import CreativePlan, Decision, GateResult
 from .policy import Policy, verify
 from .state_machine import StateTransitionEngine, TransitionEvidence, WorkflowState
 
@@ -81,20 +83,51 @@ class Orchestrator:
         })
         return winner
 
-    def dry_run_publish(self, plan: CreativePlan) -> dict[str, object]:
+    def plan_selected(self, plan: CreativePlan) -> GateResult:
+        entity_id = plan.opportunity_id.strip()
+        if not entity_id:
+            raise ValueError("plan opportunity_id is required")
+
+        current = self.states.current_state(entity_id)
+        if current is WorkflowState.PLANNED:
+            latest = self.states.history(entity_id)[-1]
+            if latest.evidence.plan_id != plan.id:
+                raise ValueError("opportunity already has a different plan")
+            return verify(plan, self.policy)
+        if current is not WorkflowState.EVIDENCE_COLLECTED:
+            raise ValueError("opportunity must be selected before planning")
+
         gate = verify(plan, self.policy)
-        self.journal.append("POLICY_DECISION", {
+        self.journal.append("PLAN_POLICY_DECISION", {
+            "entity_id": entity_id,
             "plan_id": plan.id,
             "decision": gate.decision.value,
             "reasons": list(gate.reasons),
         })
+
         if gate.decision is not Decision.ACCEPT:
-            return {"published": False, "dry_run": True, "reasons": list(gate.reasons)}
-        receipt = {
-            "published": False,
-            "dry_run": True,
-            "plan_id": plan.id,
-            "platform": plan.platform,
-        }
-        self.journal.append("DRY_RUN_PUBLICATION", receipt)
-        return receipt
+            self.states.transition(
+                entity_id,
+                WorkflowState.BLOCKED,
+                reason=";".join(gate.reasons),
+            )
+            return gate
+
+        payload = asdict(plan)
+        payload["entity_id"] = entity_id
+        payload["plan_id"] = plan.id
+        payload["policy_decision"] = gate.decision.value
+        receipt = record_evidence(
+            self.journal,
+            "creative_plan.v1",
+            payload,
+        )
+        self.states.transition(
+            entity_id,
+            WorkflowState.PLANNED,
+            TransitionEvidence(
+                plan_id=plan.id,
+                plan_ref=receipt.evidence_ref,
+            ),
+        )
+        return gate
