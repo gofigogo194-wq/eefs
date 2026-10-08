@@ -29,6 +29,16 @@ class ContentObservation:
         ):
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} is required")
+        for value, name in (
+            (self.published_at, "published_at"),
+            (self.observed_at, "observed_at"),
+            (self.discovery_query, "discovery_query"),
+            (self.content_format, "content_format"),
+        ):
+            if not isinstance(value, str):
+                raise ValueError(f"{name} must be a string")
+        if not self.published_at.strip() or not self.observed_at.strip():
+            raise ValueError("timestamps are required")
         if isinstance(self.views, bool) or not isinstance(self.views, int) or self.views < 0:
             raise ValueError("views must be a non-negative integer")
         if (
