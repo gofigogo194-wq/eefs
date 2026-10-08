@@ -62,6 +62,23 @@ class YouTubeHTTPTransport:
             raise YouTubePayloadError("YouTube API returned non-object JSON")
         return payload
 
+    @staticmethod
+    def _items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+        items = payload.get("items", [])
+        if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+            raise YouTubePayloadError("YouTube API items must be a list of objects")
+        return items
+
+    @staticmethod
+    def _view_count(value: Any) -> int:
+        try:
+            views = int(value)
+        except (TypeError, ValueError) as exc:
+            raise YouTubePayloadError("viewCount must be an integer") from exc
+        if views < 0:
+            raise YouTubePayloadError("viewCount cannot be negative")
+        return views
+
     def discover_videos(self, query: str) -> list[dict[str, str]]:
         if not query.strip():
             raise ValueError("query is required")
@@ -73,7 +90,7 @@ class YouTubeHTTPTransport:
             "maxResults": self.config.max_results,
         })
         result: list[dict[str, str]] = []
-        for item in payload.get("items", []):
+        for item in self._items(payload):
             try:
                 video_id = str(item["id"]["videoId"])
                 snippet = item["snippet"]
@@ -96,9 +113,14 @@ class YouTubeHTTPTransport:
             raise ValueError("YouTube videos.list supports at most 50 ids per request")
         payload = self._get_json("videos", {"part": "statistics", "id": ",".join(clean)})
         result: dict[str, int] = {}
-        for item in payload.get("items", []):
+        for item in self._items(payload):
             try:
-                result[str(item["id"])] = int(item["statistics"]["viewCount"])
+                item_id = str(item["id"]).strip()
+                if item_id not in clean:
+                    raise YouTubePayloadError("videos.list returned an unexpected id")
+                if item_id in result:
+                    raise YouTubePayloadError("videos.list returned a duplicate id")
+                result[item_id] = self._view_count(item["statistics"]["viewCount"])
             except (KeyError, TypeError, ValueError) as exc:
                 raise YouTubePayloadError("invalid videos.list statistics payload") from exc
         return result
@@ -112,13 +134,26 @@ class YouTubeHTTPTransport:
         payload = self._get_json("videos", {"part": "snippet,statistics", "id": ",".join(clean)})
         observed_at = datetime.now(timezone.utc).isoformat()
         result: dict[str, dict[str, object]] = {}
-        for item in payload.get("items", []):
+        for item in self._items(payload):
             try:
-                result[str(item["id"])] = {
-                    "views": int(item["statistics"]["viewCount"]),
-                    "published_at": str(item["snippet"]["publishedAt"]),
+                item_id = str(item["id"]).strip()
+                if item_id not in clean:
+                    raise YouTubePayloadError("videos.list returned an unexpected id")
+                if item_id in result:
+                    raise YouTubePayloadError("videos.list returned a duplicate id")
+                published_at = str(item["snippet"]["publishedAt"])
+                published = datetime.fromisoformat(
+                    published_at.replace("Z", "+00:00")
+                )
+                if published.tzinfo is None:
+                    raise YouTubePayloadError("publishedAt must be timezone-aware")
+                result[item_id] = {
+                    "views": self._view_count(item["statistics"]["viewCount"]),
+                    "published_at": published_at,
                     "observed_at": observed_at,
                 }
+            except YouTubePayloadError:
+                raise
             except (KeyError, TypeError, ValueError) as exc:
                 raise YouTubePayloadError("invalid videos.list details payload") from exc
         return result
@@ -134,7 +169,7 @@ class YouTubeHTTPTransport:
             "maxResults": min(max(self.config.max_results, 1), 50),
         })
         ids: list[str] = []
-        for item in payload.get("items", []):
+        for item in self._items(payload):
             video_id = item.get("id", {}).get("videoId")
             if video_id:
                 ids.append(str(video_id))
