@@ -18,8 +18,15 @@ from .intelligence_report import analyze_intelligence
 def _existing_state_root(state_dir: str) -> Path:
     root = Path(state_dir)
     snapshots = root / "snapshots.db"
-    if not root.is_dir() or not snapshots.is_file():
-        raise FileNotFoundError(f"MEDIA Ω state not found at {root.resolve()}")
+    journal = root / "journal.db"
+    if (
+        not root.is_dir()
+        or not snapshots.is_file()
+        or not journal.is_file()
+    ):
+        raise FileNotFoundError(
+            f"MEDIA Ω complete state not found at {root.resolve()}"
+        )
     return root
 
 
