@@ -79,7 +79,7 @@ def test_concurrent_writers_one_receipt(tmp_path):
 def test_conflicting_replay_fails_closed(tmp_path):
     journal = seeded_journal(tmp_path / "journal.db")
     journal.append_publisher_dry_run_once(receipt())
-    other = {**receipt(), "entity_id": "youtube:different"}
+    other = {**receipt(), "extra": "conflict"}
     with pytest.raises(RuntimeError, match="conflicts"):
         journal.append_publisher_dry_run_once(other)
     assert len([e for e in journal.read_all() if e["event_type"] == "PUBLISHER_DRY_RUN"]) == 1
