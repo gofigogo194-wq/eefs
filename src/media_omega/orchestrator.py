@@ -16,6 +16,7 @@ from .models import (
     GateResult,
 )
 from .publication_preparation import prepare_publication, dry_run_receipt
+from .media_probe import inspect_video
 from .policy import Policy, verify
 from .state_machine import StateTransitionEngine, TransitionEvidence, WorkflowState
 
@@ -490,3 +491,41 @@ class Orchestrator:
             ),
         )
         return dry_run_receipt(package)
+
+    def inspect_verified_video(self, plan: CreativePlan) -> GateResult:
+        """Media readiness is a separate, mandatory future publisher gate.
+
+        Historic VERIFIED proves file bytes, not codec/playability. This
+        probe never claims the existing schedule is upload-ready.
+        """
+        entity_id = plan.opportunity_id.strip()
+        self._require_admitted_plan(plan)
+        state = self.states.current_state(entity_id)
+        if state not in (WorkflowState.VERIFIED, WorkflowState.SCHEDULED):
+            raise ValueError("video preflight requires VERIFIED assets")
+        verified = next(
+            x for x in reversed(self.states.history(entity_id))
+            if x.to_state is WorkflowState.VERIFIED
+        )
+        manifest_ref = verified.evidence.asset_manifest_refs[0]
+        record = resolve_evidence(self.journal, manifest_ref)
+        if record is None:
+            raise RuntimeError("asset manifest evidence missing")
+        manifest = self._manifest_from_record(record, entity_id, plan.id)
+        integrity = verify_asset_manifest(manifest, plan)
+        if integrity.decision is not Decision.ACCEPT:
+            return integrity
+        videos = [asset for asset in manifest.assets if asset.media_type.startswith("video/")]
+        if len(videos) != 1:
+            return GateResult(Decision.BLOCK, ("ONE_PRIMARY_VIDEO_REQUIRED",))
+        result, media = inspect_video(videos[0].path)
+        self.journal.append("VIDEO_PREFLIGHT", {
+            "entity_id": entity_id,
+            "plan_id": plan.id,
+            "manifest_ref": manifest_ref,
+            "asset_sha256": videos[0].sha256,
+            "decision": result.decision.value,
+            "reasons": list(result.reasons),
+            "media": media,
+        })
+        return result
