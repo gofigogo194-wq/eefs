@@ -206,6 +206,17 @@ class DecisionJournal:
             rows = self._rows(db)
             if not _verify_rows(rows):
                 raise RuntimeError("decision journal hash chain is invalid")
+            # Require a real schedule transition for this entity.
+            schedules = [
+                json.loads(row[3]) for row in rows
+                if row[2] == "STATE_TRANSITION"
+                and json.loads(row[3]).get("entity_id") == entity_id
+                and json.loads(row[3]).get("to_state") == "SCHEDULED"
+            ]
+            if len(schedules) != 1:
+                raise ValueError("publisher receipt requires one admitted schedule")
+            if schedules[0].get("evidence", {}).get("schedule_id") != schedule_id:
+                raise ValueError("publisher schedule ID does not match admitted state")
             found = None
             for row in rows:
                 if row[2] != "PUBLISHER_DRY_RUN":
