@@ -17,6 +17,7 @@ from .models import (
 )
 from .publication_preparation import prepare_publication, dry_run_receipt
 from .media_probe import inspect_video, decode_video
+from .publisher_adapter import YouTubeDryRunAdapter
 from .policy import Policy, verify
 from .state_machine import StateTransitionEngine, TransitionEvidence, WorkflowState
 
@@ -531,3 +532,30 @@ class Orchestrator:
             "media": media,
         })
         return result
+
+    def publisher_dry_run(self, plan: CreativePlan) -> dict:
+        """Execute safe local publisher simulation after a fresh media check.
+
+        This method never supplies a network transport, does not create a
+        PUBLISHED transition, and cannot upload or schedule remotely.
+        """
+        entity_id = plan.opportunity_id.strip()
+        self._require_admitted_plan(plan)
+        if self.states.current_state(entity_id) is not WorkflowState.SCHEDULED:
+            raise ValueError("publisher dry-run requires SCHEDULED state")
+        latest = self.states.history(entity_id)[-1]
+        schedule = resolve_evidence(self.journal, latest.evidence.schedule_ref)
+        if schedule is None or schedule.receipt.evidence_type != "schedule.v2":
+            raise RuntimeError("canonical schedule evidence is missing")
+        preflight = self.inspect_verified_video(plan)
+        result = YouTubeDryRunAdapter().prepare(schedule.payload, preflight)
+        payload = {
+            "version": result.version,
+            "entity_id": result.entity_id,
+            "schedule_id": result.schedule_id,
+            "published": result.published,
+            "remote_id": result.remote_id,
+            "mode": result.mode,
+        }
+        self.journal.append("PUBLISHER_DRY_RUN", payload)
+        return payload
