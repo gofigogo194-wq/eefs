@@ -106,3 +106,31 @@ def test_corrupted_journal_blocks_receipt(tmp_path):
         conn.execute("UPDATE events SET payload_json='{}' WHERE event_type='PUBLISHER_DRY_RUN'")
     with pytest.raises(RuntimeError, match="hash chain"):
         journal.append_publisher_dry_run_once(receipt())
+
+def test_orphan_receipt_rejected_before_insert(tmp_path):
+    journal = DecisionJournal(tmp_path / "empty.db")
+    with pytest.raises(ValueError, match="admitted schedule"):
+        journal.append_publisher_dry_run_once(receipt())
+    assert journal.read_all() == []
+
+
+def test_crash_during_transaction_rolls_back(tmp_path, monkeypatch):
+    journal = seeded_journal(tmp_path / "journal.db")
+    from media_omega import memory
+    original = memory.DecisionJournal._append_verified
+
+    def interrupted(db, rows, event_type, payload):
+        if event_type == "PUBLISHER_DRY_RUN":
+            original(db, rows, event_type, payload)
+            raise RuntimeError("simulated power loss before commit")
+        return original(db, rows, event_type, payload)
+
+    monkeypatch.setattr(memory.DecisionJournal, "_append_verified", staticmethod(interrupted))
+    with pytest.raises(RuntimeError, match="simulated power loss"):
+        journal.append_publisher_dry_run_once(receipt())
+    monkeypatch.setattr(memory.DecisionJournal, "_append_verified", staticmethod(original))
+    recovered = DecisionJournal(journal.path)
+    assert not any(x["event_type"] == "PUBLISHER_DRY_RUN" for x in recovered.read_all())
+    assert recovered.append_publisher_dry_run_once(receipt()) == receipt()
+    assert sum(x["event_type"] == "PUBLISHER_DRY_RUN" for x in recovered.read_all()) == 1
+    assert recovered.verify_chain()
