@@ -55,3 +55,9 @@ The Candidate contains VERIFIED to SCHEDULED with a journal-bound schedule.v2 an
 Orchestrator.inspect_verified_video(plan) independently rehashes the admitted asset and calls ffprobe to inspect duration, dimensions, codec and optional audio metadata. Missing ffprobe, missing files, invalid probe results, and unsupported codecs block that preflight. VIDEO_PREFLIGHT is recorded in the journal. Metadata inspection does not prove end-to-end decode, media quality, originality, rights or actual platform upload eligibility.
 
 The currently implemented schedule_dry_run does NOT require this optional preflight, and no production uploader exists. Before live upload is ever added, the real publisher must enforce fresh media checks as a mandatory gate; existing dry-run results are not authorization.
+
+## Offline Publisher Adapter candidate
+
+`Orchestrator.publisher_dry_run(plan)` accepts only an already admitted `SCHEDULED` opportunity and reloads its journal-verified `schedule.v2` record. It calls `inspect_verified_video(plan)` afresh: actual file SHA256 verification, ffprobe metadata inspection, and full FFmpeg decoding. Only then is the private offline adapter allowed to emit `PUBLISHER_DRY_RUN` evidence (published=false, remote_id=null). A failed preflight never produces a successful dry-run receipt.
+
+The adapter has no network connection, OAuth integration, or upload capability. A dry-run event is **not** a PUBLISHED state transition. Live YouTube publication, external receipt validation, recovery from an indeterminate remote write, and real account-identity binding remain unimplemented. This Candidate must not be promoted as a live publisher.
