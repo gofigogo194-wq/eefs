@@ -179,6 +179,50 @@ class DecisionJournal:
                 raise RuntimeError("decision journal hash chain is invalid")
             return self._append_verified(db, rows, event_type, payload)
 
+    def append_publisher_dry_run_once(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Commit at most one identical offline publisher receipt per schedule.
+
+        The uniqueness check and event insert share a BEGIN IMMEDIATE lock,
+        including when separate processes use the same SQLite database.
+        This is not a remote-upload idempotency guarantee.
+        """
+        if not isinstance(payload, dict):
+            raise TypeError("publisher receipt must be an object")
+        schedule_id = payload.get("schedule_id")
+        entity_id = payload.get("entity_id")
+        if (
+            payload.get("version") != "publisher_adapter_dry_run.v1"
+            or payload.get("mode") != "DRY_RUN"
+            or payload.get("published") is not False
+            or payload.get("remote_id") is not None
+            or not isinstance(schedule_id, str)
+            or not schedule_id.strip()
+            or not isinstance(entity_id, str)
+            or not entity_id.strip()
+        ):
+            raise ValueError("invalid offline publisher receipt")
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            rows = self._rows(db)
+            if not _verify_rows(rows):
+                raise RuntimeError("decision journal hash chain is invalid")
+            found = None
+            for row in rows:
+                if row[2] != "PUBLISHER_DRY_RUN":
+                    continue
+                existing = json.loads(row[3])
+                if existing.get("schedule_id") != schedule_id:
+                    continue
+                if existing != payload:
+                    raise RuntimeError("publisher dry-run receipt conflicts with prior schedule")
+                if found is not None:
+                    raise RuntimeError("duplicate historic publisher dry-run receipts")
+                found = existing
+            if found is not None:
+                return found
+            self._append_verified(db, rows, "PUBLISHER_DRY_RUN", payload)
+            return dict(payload)
+
     def append_state_transition(
         self,
         payload: dict[str, Any],
