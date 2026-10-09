@@ -557,5 +557,4 @@ class Orchestrator:
             "remote_id": result.remote_id,
             "mode": result.mode,
         }
-        self.journal.append("PUBLISHER_DRY_RUN", payload)
-        return payload
+        return self.journal.append_publisher_dry_run_once(payload)
