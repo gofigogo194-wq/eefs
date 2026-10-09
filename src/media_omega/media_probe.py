@@ -76,3 +76,30 @@ def inspect_video(path: str, *, executable: str = "ffprobe", timeout: float = 20
         "format_name": str(fmt.get("format_name", "")),
     }
     return GateResult(Decision.ACCEPT, ("VIDEO_PROBE_PASS",)), report
+
+
+def decode_video(path: str, *, executable: str = "ffmpeg", timeout: float = 60.0) -> GateResult:
+    """Actually decode the complete video and audio streams with no output file.
+
+    ffprobe alone can accept headers of truncated media; full decode makes
+    corrupted payloads fail closed. This is a local read-only operation.
+    """
+    if not isinstance(path, str) or not path.strip() or not Path(path).is_file():
+        return GateResult(Decision.BLOCK, ("VIDEO_NOT_FOUND",))
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 < timeout <= 180:
+        raise ValueError("invalid decode timeout")
+    try:
+        completed = subprocess.run([
+            executable, "-hide_banner", "-nostdin", "-v", "error",
+            "-xerror", "-i", path, "-map", "0:v:0", "-map", "0:a?",
+            "-f", "null", "-",
+        ], capture_output=True, timeout=timeout, check=False)
+    except FileNotFoundError:
+        return GateResult(Decision.BLOCK, ("FFMPEG_UNAVAILABLE",))
+    except subprocess.TimeoutExpired:
+        return GateResult(Decision.BLOCK, ("FFMPEG_TIMEOUT",))
+    except OSError:
+        return GateResult(Decision.BLOCK, ("FFMPEG_EXECUTION_FAILED",))
+    if completed.returncode != 0:
+        return GateResult(Decision.BLOCK, ("VIDEO_DECODE_FAILED",))
+    return GateResult(Decision.ACCEPT, ("VIDEO_DECODE_PASS",))
