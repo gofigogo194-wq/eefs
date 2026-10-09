@@ -69,3 +69,9 @@ The offline publisher receipt now uses `DecisionJournal.append_publisher_dry_run
 ## Crash boundary and schedule ownership
 
 The atomic offline receipt writer additionally checks for an actual SCHEDULED transition for the same entity and exact schedule_id while holding the SQLite write transaction. Unregistered/orphan receipts are rejected. Fault injection raises between event INSERT and COMMIT to demonstrate rollback and safe retry after reopening the journal. These are local database guarantees only: interruption after an actual remote API write and before saving its acknowledgment remains unsupported and must not be automatically retried.
+
+## Future YouTube upload contract (NO LIVE WRITE)
+
+`youtube_upload_contract.py` introduces a pure deterministic intent bound to schedule, plan, manifest, verification, channel identifier, and SHA256 of the asset. Its channel equality check compares supplied identifiers and is **not OAuth verification**. No uploader, API credentials, authenticated channel readback, remote receipt, or public/private YouTube operation is implemented.
+
+If a future remote request times out after dispatch, the state must be `REMOTE_UNKNOWN`, not a successful upload and not safe to retry. `may_retry_upload` deliberately returns false for all states until the real reconciliation/readback proof and explicit authorization are implemented. This is a safety specification with unit tests, not proof of network idempotency.
