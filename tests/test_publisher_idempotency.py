@@ -99,7 +99,7 @@ def test_invalid_success_or_remote_claim_blocked(tmp_path):
 
 
 def test_corrupted_journal_blocks_receipt(tmp_path):
-    journal = DecisionJournal(tmp_path / "journal.db")
+    journal = seeded_journal(tmp_path / "journal.db")
     journal.append_publisher_dry_run_once(receipt())
     with sqlite3.connect(journal.path) as conn:
         conn.execute("DROP TRIGGER events_append_only_update")
