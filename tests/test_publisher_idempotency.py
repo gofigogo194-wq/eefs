@@ -4,6 +4,8 @@ import sqlite3
 import pytest
 
 from media_omega.memory import DecisionJournal
+from media_omega.state_machine import StateTransitionEngine, TransitionEvidence, WorkflowState
+from media_omega.evidence import record_evidence
 
 
 def receipt(schedule="schedule-abc"):
@@ -17,9 +19,42 @@ def receipt(schedule="schedule-abc"):
     }
 
 
+
+def seeded_journal(path):
+    journal = DecisionJournal(path)
+    engine = StateTransitionEngine(journal)
+    engine.register("youtube:one")
+    intel = record_evidence(journal, "intelligence_pipeline.v4", {"entity_id": "youtube:one"}).evidence_ref
+    engine.transition("youtube:one", WorkflowState.EVIDENCE_COLLECTED, TransitionEvidence(evidence_refs=(intel,)))
+    plan = record_evidence(journal, "creative_plan.v1", {"entity_id": "youtube:one", "plan_id": "p", "policy_decision": "ACCEPT"}).evidence_ref
+    engine.transition("youtube:one", WorkflowState.PLANNED, TransitionEvidence(plan_id="p", plan_ref=plan))
+    asset = record_evidence(journal, "asset_manifest.v2", {
+        "version": "asset_manifest.v2", "entity_id": "youtube:one", "plan_id": "p",
+        "provider": "fixture", "assets": [{"asset_id": "a", "path": "/fixture/video.mp4",
+        "media_type": "video/mp4", "sha256": "a" * 64, "size_bytes": 1, "provenance": "fixture"}],
+    }).evidence_ref
+    engine.transition("youtube:one", WorkflowState.ASSETS_READY, TransitionEvidence(plan_id="p", asset_manifest_refs=(asset,)))
+    checked = record_evidence(journal, "verification.v1", {
+        "entity_id": "youtube:one", "plan_id": "p", "asset_manifest_ref": asset,
+        "decision": "ACCEPT",
+    }).evidence_ref
+    engine.transition("youtube:one", WorkflowState.VERIFIED, TransitionEvidence(
+        plan_id="p", asset_manifest_refs=(asset,), verification_ref=checked, policy_decision="ACCEPT",
+    ))
+    schedule = record_evidence(journal, "schedule.v2", {
+        "version": "schedule.v2", "entity_id": "youtube:one", "plan_id": "p",
+        "manifest_ref": asset, "verification_ref": checked, "platform": "youtube",
+        "visibility": "private", "dry_run_only": True, "schedule_id": "schedule-abc",
+    }).evidence_ref
+    engine.transition("youtube:one", WorkflowState.SCHEDULED, TransitionEvidence(
+        plan_id="p", asset_manifest_refs=(asset,), verification_ref=checked,
+        schedule_id="schedule-abc", schedule_ref=schedule,
+    ))
+    return journal
+
 def test_atomic_replay_and_restart_does_not_duplicate(tmp_path):
     path = tmp_path / "journal.db"
-    one = DecisionJournal(path)
+    one = seeded_journal(path)
     expected = receipt()
     assert one.append_publisher_dry_run_once(expected) == expected
     second = DecisionJournal(path)
@@ -30,7 +65,7 @@ def test_atomic_replay_and_restart_does_not_duplicate(tmp_path):
 
 def test_concurrent_writers_one_receipt(tmp_path):
     path = tmp_path / "journal.db"
-    DecisionJournal(path)
+    seeded_journal(path)
     def invoke(_):
         return DecisionJournal(path).append_publisher_dry_run_once(receipt())
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -42,7 +77,7 @@ def test_concurrent_writers_one_receipt(tmp_path):
 
 
 def test_conflicting_replay_fails_closed(tmp_path):
-    journal = DecisionJournal(tmp_path / "journal.db")
+    journal = seeded_journal(tmp_path / "journal.db")
     journal.append_publisher_dry_run_once(receipt())
     other = {**receipt(), "entity_id": "youtube:different"}
     with pytest.raises(RuntimeError, match="conflicts"):
