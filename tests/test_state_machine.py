@@ -334,7 +334,7 @@ def test_schedule_evidence_must_match_schedule_id(tmp_path):
             policy_decision="ACCEPT",
         ),
     )
-    schedule = receipt(journal, "schedule.v1", {"schedule_id": "other"})
+    schedule = receipt(journal, "schedule.v2", schedule_payload("other", asset_ref, verification))
     with pytest.raises(ValueError, match="does not match"):
         engine.transition(
             "x",
@@ -342,7 +342,7 @@ def test_schedule_evidence_must_match_schedule_id(tmp_path):
             TransitionEvidence(
             plan_id="plan-1",
             asset_manifest_refs=(asset_ref,),
-            verification_ref=verified,
+            verification_ref=verification,
             schedule_id="s",
             schedule_ref=schedule,
         ),
