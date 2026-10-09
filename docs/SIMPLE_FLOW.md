@@ -47,3 +47,11 @@ VERIFY is one gate, not a second pipeline. It reopens the exact admitted manifes
 VERIFY does not claim independent originality or copyright certainty. Plan-level originality/rights remain declarations, while the verified facts are limited to the concrete properties listed above.
 
 Publishing, measurement, and learning remain future stages. They must extend the same linear flow instead of creating parallel systems.
+
+## Candidate publishing and media readiness
+
+The Candidate contains VERIFIED to SCHEDULED with a journal-bound schedule.v2 and a private YouTube dry-run response. Dry-run always reports published=false, remote_id=null. It performs no provider upload.
+
+Orchestrator.inspect_verified_video(plan) independently rehashes the admitted asset and calls ffprobe to inspect duration, dimensions, codec and optional audio metadata. Missing ffprobe, missing files, invalid probe results, and unsupported codecs block that preflight. VIDEO_PREFLIGHT is recorded in the journal. Metadata inspection does not prove end-to-end decode, media quality, originality, rights or actual platform upload eligibility.
+
+The currently implemented schedule_dry_run does NOT require this optional preflight, and no production uploader exists. Before live upload is ever added, the real publisher must enforce fresh media checks as a mandatory gate; existing dry-run results are not authorization.
