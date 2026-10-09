@@ -116,6 +116,10 @@ def test_verified_video_preflight_records_real_media_result(tmp_path, monkeypatc
             "audio_present": True, "duration_seconds": 7.0,
         }
     monkeypatch.setattr("media_omega.orchestrator.inspect_video", inspect)
+    monkeypatch.setattr(
+        "media_omega.orchestrator.decode_video",
+        lambda path: GateResult(Decision.ACCEPT, ("VIDEO_DECODE_PASS",)),
+    )
     gate = engine.inspect_verified_video(plan)
     assert gate.decision is Decision.ACCEPT
     evidence = [x for x in engine.journal.read_all() if x["event_type"] == "VIDEO_PREFLIGHT"]
