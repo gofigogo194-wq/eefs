@@ -65,3 +65,7 @@ The adapter has no network connection, OAuth integration, or upload capability. 
 ## Publisher dry-run crash/replay hardening
 
 The offline publisher receipt now uses `DecisionJournal.append_publisher_dry_run_once`: a SQLite `BEGIN IMMEDIATE` transaction revalidates the event hash-chain, searches all prior `PUBLISHER_DRY_RUN` receipts by `schedule_id`, and atomically inserts only if no matching receipt exists. An identical repeat or restart returns the existing receipt; conflicting content and duplicate historical receipts fail closed. It never marks remote publication or authorizes external side effects. Fresh preflight is still required before each orchestrator call, even when a receipt already exists. Tests cover threads, restart, conflict, invalid claims, and journal corruption. Real provider idempotency and ambiguous remote writes remain unproven and must not be inferred from local SQLite receipt uniqueness.
+
+## Crash boundary and schedule ownership
+
+The atomic offline receipt writer additionally checks for an actual SCHEDULED transition for the same entity and exact schedule_id while holding the SQLite write transaction. Unregistered/orphan receipts are rejected. Fault injection raises between event INSERT and COMMIT to demonstrate rollback and safe retry after reopening the journal. These are local database guarantees only: interruption after an actual remote API write and before saving its acknowledgment remains unsupported and must not be automatically retried.
