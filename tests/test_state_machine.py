@@ -41,6 +41,20 @@ def manifest_payload(plan_id, assets=None, provider="fixture"):
     }
 
 
+
+def schedule_payload(schedule_id, asset_ref, verification_ref):
+    return {
+        "version": "schedule.v2",
+        "schedule_id": schedule_id,
+        "plan_id": "plan-1",
+        "manifest_ref": asset_ref,
+        "verification_ref": verification_ref,
+        "platform": "youtube",
+        "visibility": "private",
+        "dry_run_only": True,
+    }
+
+
 def advance_to_assets_ready(journal, engine, entity="x"):
     engine.register(entity)
     intelligence = receipt(
@@ -112,14 +126,17 @@ def test_full_state_path_is_explicit_and_auditable(tmp_path):
 
     schedule = receipt(
         journal,
-        "schedule.v1",
-        {"schedule_id": "schedule-1"},
+        "schedule.v2",
+        schedule_payload("schedule-1", asset_ref, verification),
         entity,
     )
     engine.transition(
         entity,
         WorkflowState.SCHEDULED,
         TransitionEvidence(
+            plan_id="plan-1",
+            asset_manifest_refs=(asset_ref,),
+            verification_ref=verification,
             schedule_id="schedule-1",
             schedule_ref=schedule,
         ),
@@ -322,7 +339,13 @@ def test_schedule_evidence_must_match_schedule_id(tmp_path):
         engine.transition(
             "x",
             WorkflowState.SCHEDULED,
-            TransitionEvidence(schedule_id="s", schedule_ref=schedule),
+            TransitionEvidence(
+            plan_id="plan-1",
+            asset_manifest_refs=(asset_ref,),
+            verification_ref=verified,
+            schedule_id="s",
+            schedule_ref=schedule,
+        ),
         )
 
 
@@ -350,7 +373,7 @@ def test_published_cannot_be_claimed_from_dry_run_payload_even_if_flag_lies(tmp_
             policy_decision="ACCEPT",
         ),
     )
-    schedule = receipt(journal, "schedule.v1", {"schedule_id": "s"})
+    schedule = receipt(journal, "schedule.v2", schedule_payload("s", asset_ref, verified))
     engine.transition(
         "x",
         WorkflowState.SCHEDULED,
