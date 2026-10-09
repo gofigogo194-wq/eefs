@@ -219,6 +219,14 @@ class StateTransitionEngine:
                         raise RuntimeError(
                             "verification manifest does not match ASSETS_READY"
                         )
+                if to_state is WorkflowState.SCHEDULED and result:
+                    prior = result[-1]
+                    if (
+                        evidence.plan_id != prior.evidence.plan_id
+                        or evidence.asset_manifest_refs != prior.evidence.asset_manifest_refs
+                        or evidence.verification_ref != prior.evidence.verification_ref
+                    ):
+                        raise RuntimeError("schedule differs from VERIFIED evidence")
                 try:
                     self._validate_contract(
                         entity_id,
@@ -308,6 +316,14 @@ class StateTransitionEngine:
                     raise ValueError(
                         "verification manifest does not match ASSETS_READY"
                     )
+            if to_state is WorkflowState.SCHEDULED:
+                prior = self.history(entity_id)[-1]
+                if (
+                    evidence.plan_id != prior.evidence.plan_id
+                    or evidence.asset_manifest_refs != prior.evidence.asset_manifest_refs
+                    or evidence.verification_ref != prior.evidence.verification_ref
+                ):
+                    raise ValueError("schedule does not match verified plan and assets")
             self._validate_contract(entity_id, to_state, evidence, reason)
             transition = StateTransition(
                 entity_id=entity_id,
@@ -553,8 +569,22 @@ class StateTransitionEngine:
                 "schedule.",
                 before_event_id,
             )
-            if records[0].payload.get("schedule_id") != evidence.schedule_id:
+            payload = records[0].payload
+            if records[0].receipt.evidence_type != "schedule.v2":
+                raise ValueError("only schedule.v2 can be admitted")
+            if payload.get("schedule_id") != evidence.schedule_id:
                 raise ValueError("schedule evidence does not match schedule_id")
+            if (
+                payload.get("version") != "schedule.v2"
+                or payload.get("dry_run_only") is not True
+                or payload.get("visibility") != "private"
+                or payload.get("platform") != "youtube"
+                or payload.get("plan_id") != evidence.plan_id
+                or len(evidence.asset_manifest_refs) != 1
+                or payload.get("manifest_ref") != evidence.asset_manifest_refs[0]
+                or payload.get("verification_ref") != evidence.verification_ref
+            ):
+                raise ValueError("schedule evidence is not bound to verified assets")
 
         elif to_state is WorkflowState.PUBLISHED:
             records = self._require_records(
