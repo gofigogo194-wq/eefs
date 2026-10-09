@@ -377,7 +377,7 @@ def test_published_cannot_be_claimed_from_dry_run_payload_even_if_flag_lies(tmp_
     engine.transition(
         "x",
         WorkflowState.SCHEDULED,
-        TransitionEvidence(schedule_id="s", schedule_ref=schedule),
+        TransitionEvidence(plan_id="plan-1", asset_manifest_refs=(asset_ref,), verification_ref=verified, schedule_id="s", schedule_ref=schedule),
     )
 
     dry_run = receipt(
