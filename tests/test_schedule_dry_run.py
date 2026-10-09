@@ -104,3 +104,33 @@ def test_schedule_never_confirms_publication(tmp_path):
         and e["payload"].get("to_state") == "PUBLISHED"
         for e in engine.journal.read_all()
     )
+
+
+def test_verified_video_preflight_records_real_media_result(tmp_path, monkeypatch):
+    engine, plan, path = prepared(tmp_path)
+    from media_omega.models import GateResult
+    def inspect(file_path):
+        assert file_path == str(path.resolve())
+        return GateResult(Decision.ACCEPT, ("VIDEO_PROBE_PASS",)), {
+            "version": "video_probe.v1", "video_codec": "h264",
+            "audio_present": True, "duration_seconds": 7.0,
+        }
+    monkeypatch.setattr("media_omega.orchestrator.inspect_video", inspect)
+    gate = engine.inspect_verified_video(plan)
+    assert gate.decision is Decision.ACCEPT
+    evidence = [x for x in engine.journal.read_all() if x["event_type"] == "VIDEO_PREFLIGHT"]
+    assert len(evidence) == 1
+    assert evidence[0]["payload"]["decision"] == "ACCEPT"
+    assert evidence[0]["payload"]["media"]["duration_seconds"] == 7.0
+    assert engine.states.current_state(plan.opportunity_id) is WorkflowState.VERIFIED
+
+
+def test_verified_video_preflight_refuses_mutated_file(tmp_path, monkeypatch):
+    engine, plan, path = prepared(tmp_path)
+    path.write_bytes(b"tampered")
+    def should_not_probe(file_path):
+        pytest.fail("probe must not run when hash has changed")
+    monkeypatch.setattr("media_omega.orchestrator.inspect_video", should_not_probe)
+    gate = engine.inspect_verified_video(plan)
+    assert gate.decision is Decision.BLOCK
+    assert "MISMATCH" in repr(gate.reasons)
