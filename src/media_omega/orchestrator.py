@@ -16,7 +16,7 @@ from .models import (
     GateResult,
 )
 from .publication_preparation import prepare_publication, dry_run_receipt
-from .media_probe import inspect_video
+from .media_probe import inspect_video, decode_video
 from .policy import Policy, verify
 from .state_machine import StateTransitionEngine, TransitionEvidence, WorkflowState
 
@@ -519,6 +519,8 @@ class Orchestrator:
         if len(videos) != 1:
             return GateResult(Decision.BLOCK, ("ONE_PRIMARY_VIDEO_REQUIRED",))
         result, media = inspect_video(videos[0].path)
+        if result.decision is Decision.ACCEPT:
+            result = decode_video(videos[0].path)
         self.journal.append("VIDEO_PREFLIGHT", {
             "entity_id": entity_id,
             "plan_id": plan.id,
