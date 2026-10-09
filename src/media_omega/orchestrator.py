@@ -15,6 +15,7 @@ from .models import (
     Decision,
     GateResult,
 )
+from .publication_preparation import prepare_publication, dry_run_receipt
 from .policy import Policy, verify
 from .state_machine import StateTransitionEngine, TransitionEvidence, WorkflowState
 
@@ -425,3 +426,67 @@ class Orchestrator:
         )
         return gate
 
+
+    def schedule_dry_run(
+        self,
+        plan: CreativePlan,
+        scheduled_at: str,
+        description: str = "",
+        visibility: str = "private",
+    ) -> dict:
+        """Prepare one private YouTube schedule; never invoke a provider."""
+        entity_id = plan.opportunity_id.strip()
+        self._require_admitted_plan(plan)
+        current = self.states.current_state(entity_id)
+        if current not in (WorkflowState.VERIFIED, WorkflowState.SCHEDULED):
+            raise ValueError("assets must be VERIFIED before scheduling")
+
+        history = self.states.history(entity_id)
+        verified = next(
+            (event for event in reversed(history)
+             if event.to_state is WorkflowState.VERIFIED),
+            None,
+        )
+        if verified is None or len(verified.evidence.asset_manifest_refs) != 1:
+            raise RuntimeError("canonical VERIFIED evidence is required")
+        manifest_ref = verified.evidence.asset_manifest_refs[0]
+        manifest_record = resolve_evidence(self.journal, manifest_ref)
+        if manifest_record is None:
+            raise RuntimeError("admitted manifest is missing")
+        manifest = self._manifest_from_record(manifest_record, entity_id, plan.id)
+
+        # Replay does not trust a historic VERIFIED receipt as proof that
+        # files still exist or still contain the original verified bytes.
+        gate = verify_asset_manifest(manifest, plan)
+        if gate.decision is not Decision.ACCEPT:
+            raise ValueError("current asset integrity check failed: " + ",".join(gate.reasons))
+
+        package = prepare_publication(
+            plan, manifest_ref, verified.evidence.verification_ref,
+            scheduled_at, description, visibility,
+        )
+        if current is WorkflowState.SCHEDULED:
+            latest = history[-1]
+            existing = resolve_evidence(self.journal, latest.evidence.schedule_ref)
+            if (
+                existing is None
+                or existing.receipt.evidence_type != "schedule.v2"
+                or existing.payload != package.payload()
+                or latest.evidence.schedule_id != package.schedule_id
+            ):
+                raise ValueError("opportunity already scheduled with different package")
+            return dry_run_receipt(package)
+
+        receipt = record_evidence(self.journal, package.version, package.payload())
+        self.states.transition(
+            entity_id,
+            WorkflowState.SCHEDULED,
+            TransitionEvidence(
+                plan_id=plan.id,
+                asset_manifest_refs=(manifest_ref,),
+                verification_ref=verified.evidence.verification_ref,
+                schedule_id=package.schedule_id,
+                schedule_ref=receipt.evidence_ref,
+            ),
+        )
+        return dry_run_receipt(package)
