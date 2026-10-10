@@ -99,3 +99,7 @@ If a future remote request times out after dispatch, the state must be `REMOTE_U
 ## First real ambient MP4 creator
 
 `render_ambient_loop(video, audio, output_mp4, duration_seconds=...)` assembles a local H.264/AAC MP4 from user-provided video and audio by looping both inputs to a specified duration of up to five hours. It writes a temporary `.partial.mp4`, probes codec/audio/duration, fully decodes the output, and only then atomically renames to the requested path; failure deletes the partial output and never overwrites the source or an existing output. This proves valid MP4 assembly only for tested short fixtures; smooth visual/audio loop transitions, production 1–5 hour performance, rights ownership, and integration with the Orchestrator's asset manifest remain future gates. No YouTube upload is possible through this module.
+
+## Audio loop crossfade candidate
+
+`render_ambient_loop(..., audio_crossfade_seconds=0.15)` optionally builds a wrap-around audio unit: source middle followed by equal-power crossfade of source tail and head, then repeats the resulting PCM waveform. This avoids a hard discontinuity at the audio loop reset. The default remains unchanged (`audio_crossfade_seconds=0`), and the overlap accepts up to 1 second. A real FFmpeg short-clip test checks encoded output, duration and audio stream. We have **not** measured audible click thresholds, music perceptual quality, visual loop seamlessness, or multi-hour resource usage. This is an isolated Candidate feature and does not upload videos.
