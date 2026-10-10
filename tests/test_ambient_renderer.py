@@ -75,7 +75,7 @@ def test_visual_crossfade_rejects_undersized_source(tmp_path):
     video = tmp_path / "tiny.mp4"
     audio = tmp_path / "tone.wav"
     subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
-                    "testsrc2=size=160x120:rate=24", "-t", "0.20",
+                    "testsrc2=size=160x160:rate=24", "-t", "0.20",
                     "-c:v", "mpeg4", "-y", str(video)],
                    check=True, capture_output=True, timeout=30)
     subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
