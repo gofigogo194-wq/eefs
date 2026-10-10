@@ -2,6 +2,9 @@ name: Windows Portable Candidate
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - "candidate/**"
 
 permissions:
   contents: read
