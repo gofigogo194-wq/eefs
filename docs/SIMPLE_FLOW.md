@@ -111,3 +111,13 @@ If a future remote request times out after dispatch, the state must be `REMOTE_U
 ## Minimal publishing-first workflow
 
 MEDIA Ω focuses on finding existing popular YouTube videos, creating legally reusable or newly produced clips, and preparing them for publication. `YouTubeReadOnlyAPI.get_popular_videos(region_code, max_results)` reads the official `videos.list(chart=mostPopular)` chart and returns a simple shortlist (title, views, link, channel). Every candidate is marked `reuse_permission=NOT_VERIFIED`; neither popularity nor public visibility grants permission to download, republish, or monetize. The optional ambient renderer remains available for licensed/user-owned inputs. Automatic third-party downloading and live publishing are disabled. No speculative viral prediction is required.
+
+## Fast first-video CLI (Candidate)
+
+Install with `python -m pip install -e .` and ensure FFmpeg/ffprobe are on PATH.
+
+1. To list popular videos (metadata only), set an already-issued read-only OAuth access token in the environment variable `MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN`; run `media-omega popular --region TH --count 10`. This is not a download command and every result states `reuse_permission=NOT_VERIFIED`. The app does not yet offer a one-command Google login or token persistence.
+2. Obtain your own video and a licensed audio file as local inputs. Run `media-omega render --video own.mp4 --audio licensed.mp3 --output output.mp4 --duration 60 --video-fade 0.15 --audio-fade 0.15 --rights-confirmed`. Duration is seconds and can be up to five hours; long renders have not passed a resource/soak gate. The explicit rights confirmation covers both inputs and does not verify rights by itself.
+3. Inspect and listen to the produced MP4. The command never downloads external videos and never publishes to YouTube.
+
+These two CLI commands are independently runnable; the user selects videos and provides lawful local source files. There is no automatic copying of third-party videos or publication. 
