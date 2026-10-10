@@ -19,31 +19,42 @@ class YouTubeReadOnlyAPI:
     BASE_URL = "https://www.googleapis.com/youtube/v3/"
     ALLOWED_PATHS = frozenset({"channels", "videos"})
 
-    def __init__(self, access_token: str, *, timeout: float = 10.0, opener=None):
-        if not isinstance(access_token, str) or not access_token.strip():
-            raise ValueError("access token required")
+    def __init__(self, access_token: str = "", *, api_key: str = "", timeout: float = 10.0, opener=None):
+        if not isinstance(access_token, str) or not isinstance(api_key, str):
+            raise ValueError("invalid API credential")
+        if not access_token.strip() and not api_key.strip():
+            raise ValueError("YouTube API key or access token required")
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 < timeout <= 30:
             raise ValueError("invalid request timeout")
-        self._token = access_token
+        self._token = access_token.strip()
+        self._api_key = api_key.strip()
         self._timeout = timeout
         self._opener = opener if opener is not None else build_opener(_NoRedirect())
 
     def _get(self, resource: str, query: dict) -> dict:
         if resource not in self.ALLOWED_PATHS:
             raise ValueError("read-only endpoint not allowed")
-        url = self.BASE_URL + resource + "?" + urlencode(query)
-        request = Request(
-            url, headers={
-                "Authorization": "Bearer " + self._token,
-                "Accept": "application/json",
-            }, method="GET",
-        )
+        if not self._token and resource == "channels":
+            raise ValueError("authenticated channel read requires an OAuth token")
+        if not self._token and not self._api_key:
+            raise ValueError("YouTube credential required")
+        parameters = dict(query)
+        # API keys are only for public most-popular charts; not account reads.
+        if not self._token:
+            if resource != "videos" or parameters.get("chart") != "mostPopular":
+                raise ValueError("API key mode allows public popular videos only")
+            parameters["key"] = self._api_key
+        url = self.BASE_URL + resource + "?" + urlencode(parameters)
+        headers = {"Accept": "application/json"}
+        if self._token:
+            headers["Authorization"] = "Bearer " + self._token
+        request = Request(url, headers=headers, method="GET")
         try:
             with self._opener.open(request, timeout=self._timeout) as response:
                 data = response.read(1024 * 1024 + 1)
                 if len(data) > 1024 * 1024:
                     raise ValueError("API response too large")
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        except (HTTPError, URLError, TimeoutError, OSError):
             raise RuntimeError("YouTube read-only API request failed") from None
         try:
             result = json.loads(data)
