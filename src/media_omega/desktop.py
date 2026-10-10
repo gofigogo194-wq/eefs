@@ -24,11 +24,12 @@ def find_popular(region: str, count: int) -> list[dict]:
 
 
 def create_local_video(video: str, audio: str, output: str, duration: float,
-                       rights_confirmed: bool) -> str:
+                       rights_confirmed: bool, loop_seconds: float = 5.0) -> str:
     if not rights_confirmed:
         raise ValueError("Confirm that you have rights to the video and audio")
     return render_ambient_loop(video, audio, output, duration_seconds=duration,
-                               video_crossfade_seconds=0.15,
+                               video_crossfade_seconds=0.7,
+                               video_loop_segment_seconds=loop_seconds,
                                audio_crossfade_seconds=0.15)
 
 
@@ -51,6 +52,7 @@ def main() -> int:
     audio = tk.StringVar()
     output = tk.StringVar()
     duration = tk.StringVar(value="60")
+    loop_seconds = tk.StringVar(value="5")
     rights = tk.BooleanVar(value=False)
     status = tk.StringVar(value="Ready. No uploads are enabled.")
     work: Queue = Queue()
@@ -91,6 +93,8 @@ def main() -> int:
     line.pack(fill="x", pady=8)
     ttk.Label(line, text="Seconds").pack(side="left")
     ttk.Entry(line, textvariable=duration, width=10).pack(side="left", padx=8)
+    ttk.Label(line, text="Loop clip (s)").pack(side="left", padx=(10, 0))
+    ttk.Entry(line, textvariable=loop_seconds, width=8).pack(side="left", padx=6)
     ttk.Checkbutton(bottom, text="I have permission to use BOTH the video and music", variable=rights).pack(anchor="w")
     render_btn = ttk.Button(bottom, text="Create MP4")
     render_btn.pack(anchor="w", pady=(8, 0))
@@ -140,13 +144,14 @@ def main() -> int:
     def start_render():
         try:
             seconds = float(duration.get())
+            loop = float(loop_seconds.get())
         except ValueError:
             status.set("Invalid duration")
             return
         if not rights.get():
             status.set("Confirm rights to both inputs before rendering")
             return
-        args = (video.get(), audio.get(), output.get(), seconds, bool(rights.get()))
+        args = (video.get(), audio.get(), output.get(), seconds, bool(rights.get()), loop)
         run_task(lambda: create_local_video(*args), show_render)
 
     search_btn.configure(command=start_find)
