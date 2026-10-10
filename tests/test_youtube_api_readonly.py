@@ -87,3 +87,27 @@ def test_readback_cannot_claim_upload_success():
     }, channel_id="UC-owner", expected_channel_id="UC-owner", asset_sha256="a" * 64)
     result = inspect_remote_video(api, intent, "missing")
     assert result.state is UploadState.REMOTE_UNKNOWN
+
+
+def test_public_chart_api_key_uses_get_only_and_never_bearer():
+    opener = RecordingOpener({"items": [{"id": "ABC123", "snippet": {"title": "A", "channelId": "UC"}, "statistics": {"viewCount": "123"}}]})
+    api = YouTubeReadOnlyAPI(api_key="temporary-key", opener=opener)
+    rows = api.get_popular_videos(region_code="TH", max_results=10)
+    assert rows[0]["views"] == 123
+    assert rows[0]["reuse_permission"] == "NOT_VERIFIED"
+    request, _ = opener.calls[0]
+    assert request.get_method() == "GET"
+    assert "chart=mostPopular" in request.full_url
+    assert "regionCode=TH" in request.full_url
+    assert "key=temporary-key" in request.full_url
+    assert request.get_header("Authorization") is None
+
+
+def test_api_key_does_not_unlock_account_or_nonpublic_read():
+    api = YouTubeReadOnlyAPI(api_key="temporary-key", opener=RecordingOpener({}))
+    with pytest.raises(ValueError, match="OAuth"):
+        api.get_authenticated_channel()
+    with pytest.raises(ValueError, match="public popular"):
+        api.get_video("an-id")
+    with pytest.raises(ValueError, match="credential"):
+        YouTubeReadOnlyAPI()
