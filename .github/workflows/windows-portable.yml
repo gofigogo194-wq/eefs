@@ -19,8 +19,8 @@ jobs:
       - name: Build standalone desktop directory
         shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --onedir --windowed --name MEDIA_OMEGA src/media_omega/desktop.py
-      - name: Verify portable executable starts without Python imports
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --name MEDIA_OMEGA desktop_entry.py
+      - name: Verify portable artifact files exist
         shell: pwsh
         run: |
           if (-not (Test-Path "dist/MEDIA_OMEGA/MEDIA_OMEGA.exe")) { throw "Missing executable" }
