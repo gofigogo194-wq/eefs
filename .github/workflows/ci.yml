@@ -1,0 +1,92 @@
+name: Candidate CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "candidate/**"
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: test linux py${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install candidate and pinned test tooling
+        run: python -m pip install -e ".[test]"
+      - name: Verify installed dependencies
+        run: python -m pip check
+      - name: Compile sources
+        run: python -m compileall -q src
+      - name: Install real media verification tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version
+          ffprobe -version
+      - name: Run tests
+        run: python -m pytest -q
+
+  windows:
+    name: test windows py3.14
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: Install candidate and pinned test tooling
+        run: python -m pip install -e ".[test]"
+      - name: Verify installed dependencies
+        run: python -m pip check
+      - name: Compile sources
+        run: python -m compileall -q src
+      - name: Install FFmpeg for real Windows video integration
+        shell: pwsh
+        run: |
+          choco install ffmpeg --yes --no-progress
+          ffmpeg -version
+          ffprobe -version
+      - name: Verify Windows desktop Tkinter bootstrap without GUI display
+        shell: pwsh
+        run: |
+          python -c "import tkinter; import media_omega.desktop; t=tkinter.Tcl(); assert t.eval('expr 2 + 2') == '4'"
+          if (-not (Test-Path 'START_MEDIA_OMEGA_WINDOWS.bat')) { throw 'Windows launcher missing' }
+      - name: Run tests
+        run: python -m pytest -q
+      - name: Package Windows desktop candidate
+        shell: pwsh
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --name MEDIA_OMEGA desktop_entry.py
+          if (-not (Test-Path 'dist/MEDIA_OMEGA/MEDIA_OMEGA.exe')) { throw 'Portable EXE missing' }
+          $ffmpeg = Get-ChildItem "$env:ChocolateyInstall/lib/ffmpeg" -Filter ffmpeg.exe -File -Recurse |
+            Sort-Object Length -Descending | Select-Object -First 1
+          $ffprobe = Get-ChildItem "$env:ChocolateyInstall/lib/ffmpeg" -Filter ffprobe.exe -File -Recurse |
+            Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $ffmpeg -or -not $ffprobe) { throw 'Actual FFmpeg binaries unavailable' }
+          if ($ffmpeg.Length -lt 1000000 -or $ffprobe.Length -lt 1000000) {
+            throw 'FFmpeg executables are unexpectedly small (likely Chocolatey shims)'
+          }
+          Copy-Item $ffmpeg.FullName 'dist/MEDIA_OMEGA/ffmpeg.exe'
+          Copy-Item $ffprobe.FullName 'dist/MEDIA_OMEGA/ffprobe.exe'
+          & 'dist/MEDIA_OMEGA/ffmpeg.exe' -version
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged FFmpeg not executable' }
+          & 'dist/MEDIA_OMEGA/ffprobe.exe' -version
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged FFprobe not executable' }
+          Compress-Archive -Path 'dist/MEDIA_OMEGA/*' -DestinationPath 'MEDIA_OMEGA_WINDOWS_CANDIDATE.zip' -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MEDIA_OMEGA_WINDOWS_CANDIDATE
+          path: MEDIA_OMEGA_WINDOWS_CANDIDATE.zip
+          retention-days: 7

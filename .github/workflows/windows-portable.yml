@@ -1,0 +1,39 @@
+name: Windows Portable Candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "candidate/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: Install build tools
+        run: python -m pip install -e ".[test]" pyinstaller
+      - name: Build standalone desktop directory
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --name MEDIA_OMEGA desktop_entry.py
+      - name: Verify portable artifact files exist
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/MEDIA_OMEGA/MEDIA_OMEGA.exe")) { throw "Missing executable" }
+          Get-ChildItem dist/MEDIA_OMEGA | Select-Object -First 8
+      - name: Archive candidate
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/MEDIA_OMEGA/*" -DestinationPath MEDIA_OMEGA_WINDOWS_CANDIDATE.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MEDIA_OMEGA_WINDOWS_CANDIDATE
+          path: MEDIA_OMEGA_WINDOWS_CANDIDATE.zip
+          retention-days: 7

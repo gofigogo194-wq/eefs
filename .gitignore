@@ -10,3 +10,6 @@ venv/
 *.db
 artifacts/
 secrets/
+
+# Local runtime state
+.media-omega/

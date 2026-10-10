@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Protocol
+
+
+@dataclass(frozen=True)
+class DiscoveryItem:
+    platform: str
+    content_id: str
+    creator_id: str
+    title: str
+    published_at: str
+    evidence_ref: str
+    discovery_query: str = ""
+    content_format: str = "unknown"
+
+
+class DiscoverySource(Protocol):
+    def discover(self, query: str) -> list[DiscoveryItem]:
+        ...
+
+
+@dataclass(frozen=True)
+class DiscoveryPolicy:
+    max_candidates: int = 25
+    min_title_length: int = 3
+
+    def validate(self) -> None:
+        if not 1 <= self.max_candidates <= 50:
+            raise ValueError("max_candidates must be between 1 and 50")
+        if self.min_title_length < 1:
+            raise ValueError("min_title_length must be positive")
+
+
+def select_candidates(items: list[DiscoveryItem], policy: DiscoveryPolicy | None = None) -> list[DiscoveryItem]:
+    policy = policy or DiscoveryPolicy()
+    policy.validate()
+    seen: set[tuple[str, str]] = set()
+    result: list[DiscoveryItem] = []
+    for item in items:
+        if any(
+            not isinstance(value, str)
+            for value in (
+                item.platform,
+                item.content_id,
+                item.creator_id,
+                item.title,
+                item.published_at,
+                item.evidence_ref,
+                item.discovery_query,
+                item.content_format,
+            )
+        ):
+            continue
+        if not item.platform.strip() or not item.content_id.strip() or not item.creator_id.strip():
+            continue
+        try:
+            published = datetime.fromisoformat(item.published_at.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if published.tzinfo is None:
+            continue
+        key = (item.platform, item.content_id)
+        if key in seen:
+            continue
+        if len(item.title.strip()) < policy.min_title_length:
+            continue
+        if not item.evidence_ref.strip():
+            continue
+        seen.add(key)
+        result.append(item)
+        if len(result) >= policy.max_candidates:
+            break
+    return result
