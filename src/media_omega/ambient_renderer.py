@@ -147,13 +147,14 @@ def render_ambient_loop(source_video: str, source_audio: str, output_mp4: str,
                        timeout=max(60, int(duration_seconds * 3)))
         gate, report = inspect_video(str(temp))
         if gate.decision is not Decision.ACCEPT:
-            raise RuntimeError("rendered media metadata rejected")
+            raise RuntimeError("rendered media metadata rejected: " + ",".join(gate.reasons))
         if abs(report["duration_seconds"] - duration_seconds) > 0.35:
             raise RuntimeError("rendered duration does not match")
         if not report["audio_present"]:
             raise RuntimeError("rendered audio missing")
-        if decode_video(str(temp), timeout=min(180, max(60, duration_seconds * 2))).decision is not Decision.ACCEPT:
-            raise RuntimeError("rendered media full decode rejected")
+        decode_gate = decode_video(str(temp), timeout=min(180, max(60, duration_seconds * 2)))
+        if decode_gate.decision is not Decision.ACCEPT:
+            raise RuntimeError("rendered media full decode rejected: " + ",".join(decode_gate.reasons))
         temp.replace(output)
         return str(output)
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
