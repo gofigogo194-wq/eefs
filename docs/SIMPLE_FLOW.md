@@ -121,3 +121,7 @@ Install with `python -m pip install -e .` and ensure FFmpeg/ffprobe are on PATH.
 3. Inspect and listen to the produced MP4. The command never downloads external videos and never publishes to YouTube.
 
 These two CLI commands are independently runnable; the user selects videos and provides lawful local source files. There is no automatic copying of third-party videos or publication. 
+
+## Minimal desktop workshop (Candidate)
+
+Run `python -m media_omega.desktop` on a Windows Python installation with Tkinter, FFmpeg and ffprobe installed. The window offers a popular video list using `MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN` from the process environment (no token text field or on-disk token storage), plus browse inputs for local video and music, output MP4, duration in seconds, a rights-confirmation checkbox, and Create MP4. Work runs in a background thread to avoid blocking the window; status changes return to the main GUI thread. The UI has **no YouTube upload or download**, no OAuth interactive login, and cannot establish rights to downloaded media. This is a minimal desktop window, not a packaged installer; the actual interactive Windows window and long-duration media have not been exercised by CI. Validate those on the target machine before RC. For short inputs shorter than the default 0.15s crossfade's preflight threshold, render will fail closed.
