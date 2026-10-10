@@ -107,3 +107,7 @@ If a future remote request times out after dispatch, the state must be `REMOTE_U
 ## Visual loop dissolve (Candidate)
 
 `render_ambient_loop(..., video_crossfade_seconds=0.15)` now optionally prepares a rotated video loop at a constant 24 fps by combining its middle segment with an FFmpeg dissolve from tail to head. This is an opt-in technical transition, **not proof of perceptual seamlessness**. Short FFmpeg fixture tests check codec, audio and duration. Slow 1–5h renders, memory, source-specific transitions, visual quality and manual listening/viewing remain unproven. Live publication remains disabled.
+
+## Minimal publishing-first workflow
+
+MEDIA Ω focuses on finding existing popular YouTube videos, creating legally reusable or newly produced clips, and preparing them for publication. `YouTubeReadOnlyAPI.get_popular_videos(region_code, max_results)` reads the official `videos.list(chart=mostPopular)` chart and returns a simple shortlist (title, views, link, channel). Every candidate is marked `reuse_permission=NOT_VERIFIED`; neither popularity nor public visibility grants permission to download, republish, or monetize. The optional ambient renderer remains available for licensed/user-owned inputs. Automatic third-party downloading and live publishing are disabled. No speculative viral prediction is required.
