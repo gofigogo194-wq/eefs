@@ -31,7 +31,7 @@ def test_actual_loop_render_has_audio_correct_duration_and_replay_protection(tmp
         "-t", "1", "-c:a", "aac", "-y", str(audio),
     ], check=True, capture_output=True, timeout=40)
     output = tmp_path / "result.mp4"
-    result = render_ambient_loop(str(video), str(audio), str(output), duration_seconds=2.5)
+    result = render_ambient_loop(str(video), str(audio), str(output), duration_seconds=2.5, audio_crossfade_seconds=0.15)
     assert result == str(output.resolve())
     gate, report = inspect_video(result)
     assert gate.decision is Decision.ACCEPT
@@ -40,3 +40,23 @@ def test_actual_loop_render_has_audio_correct_duration_and_replay_protection(tmp
     assert decode_video(result).decision is Decision.ACCEPT
     with pytest.raises(ValueError, match="already exists"):
         render_ambient_loop(str(video), str(audio), str(output), duration_seconds=2.5)
+
+
+def test_crossfade_validation_rejects_bad_overlap(tmp_path):
+    with pytest.raises(ValueError, match="audio crossfade"):
+        render_ambient_loop("none", "none", str(tmp_path / "out.mp4"), duration_seconds=2, audio_crossfade_seconds=-0.1)
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
+                    reason="real ffmpeg and ffprobe required")
+def test_crossfade_rejects_too_short_audio(tmp_path):
+    video = tmp_path / "clip.mp4"
+    audio = tmp_path / "short.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=size=320x240:rate=5",
+                    "-t", "1", "-c:v", "mpeg4", "-y", str(video)],
+                   check=True, capture_output=True, timeout=30)
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=500",
+                    "-t", "0.2", "-y", str(audio)], check=True, capture_output=True, timeout=30)
+    with pytest.raises(ValueError, match="three crossfade"):
+        render_ambient_loop(str(video), str(audio), str(tmp_path / "result.mp4"),
+                            duration_seconds=1, audio_crossfade_seconds=0.1)
