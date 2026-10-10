@@ -109,5 +109,5 @@ def test_api_key_does_not_unlock_account_or_nonpublic_read():
         api.get_authenticated_channel()
     with pytest.raises(ValueError, match="public popular"):
         api.get_video("an-id")
-    with pytest.raises(ValueError, match="credential"):
+    with pytest.raises(ValueError, match="API key or access token"):
         YouTubeReadOnlyAPI()
