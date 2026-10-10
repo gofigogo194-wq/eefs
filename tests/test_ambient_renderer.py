@@ -103,7 +103,7 @@ def test_short_segment_loops_without_processing_whole_source(tmp_path):
     video = tmp_path / "six_seconds.mp4"
     audio = tmp_path / "one_second.wav"
     subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
-                    "testsrc2=size=160x120:rate=24", "-t", "6",
+                    "testsrc2=size=160x160:rate=24", "-t", "6",
                     "-c:v", "mpeg4", "-y", str(video)],
                    check=True, capture_output=True, timeout=40)
     subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
