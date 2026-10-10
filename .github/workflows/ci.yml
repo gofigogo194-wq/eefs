@@ -51,5 +51,11 @@ jobs:
         run: python -m pip check
       - name: Compile sources
         run: python -m compileall -q src
+      - name: Install FFmpeg for real Windows video integration
+        shell: pwsh
+        run: |
+          choco install ffmpeg --yes --no-progress
+          ffmpeg -version
+          ffprobe -version
       - name: Run tests
         run: python -m pytest -q
