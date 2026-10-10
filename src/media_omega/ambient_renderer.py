@@ -12,7 +12,8 @@ from .models import Decision
 
 def render_ambient_loop(source_video: str, source_audio: str, output_mp4: str,
                         *, duration_seconds: float, ffmpeg: str = "ffmpeg",
-                        audio_crossfade_seconds: float = 0.0) -> str:
+                        audio_crossfade_seconds: float = 0.0,
+                        video_crossfade_seconds: float = 0.0) -> str:
     """Loop a user-supplied video and audio to one exact-duration MP4.
 
     The seamlessness of loop boundaries depends on matching source endpoints;
@@ -25,6 +26,11 @@ def render_ambient_loop(source_video: str, source_audio: str, output_mp4: str,
             or not math.isfinite(audio_crossfade_seconds)
             or not 0 <= audio_crossfade_seconds <= 1):
         raise ValueError("audio crossfade must be between 0 and 1 seconds")
+    if (isinstance(video_crossfade_seconds, bool)
+            or not isinstance(video_crossfade_seconds, (int, float))
+            or not math.isfinite(video_crossfade_seconds)
+            or not 0 <= video_crossfade_seconds <= 1):
+        raise ValueError("video crossfade must be between 0 and 1 seconds")
     video = Path(source_video).resolve()
     audio = Path(source_audio).resolve()
     output = Path(output_mp4).resolve()
@@ -77,9 +83,47 @@ def render_ambient_loop(source_video: str, source_audio: str, output_mp4: str,
             if audio_loop.exists():
                 audio_loop.unlink()
             raise RuntimeError("audio crossfade preparation failed") from None
+    video_loop = temp.with_name(temp.stem + ".video-loop.mp4")
+    if video_loop.exists():
+        raise ValueError("prepared video loop already exists")
+    if video_crossfade_seconds:
+        probe = subprocess.run([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "format=duration", "-of", "json", str(video),
+        ], capture_output=True, text=True, timeout=20, check=False)
+        if probe.returncode:
+            raise RuntimeError("video duration preflight failed")
+        try:
+            length = float(json.loads(probe.stdout)["format"]["duration"])
+        except (ValueError, KeyError, TypeError):
+            raise RuntimeError("invalid video duration") from None
+        overlap = float(video_crossfade_seconds)
+        if not math.isfinite(length) or length <= overlap * 3:
+            raise ValueError("video must be longer than three crossfade intervals")
+        # Rotate at the overlap: middle, then tail -> head dissolved.
+        # Both streams normalized to constant frame rate and dimensions.
+        vf = (
+            f"[0:v]fps=24,format=yuv420p,split=3[a][b][c];"
+            f"[a]trim=start={overlap}:end={length-overlap},setpts=PTS-STARTPTS[mid];"
+            f"[b]trim=start={length-overlap}:end={length},setpts=PTS-STARTPTS[tail];"
+            f"[c]trim=start=0:end={overlap},setpts=PTS-STARTPTS[head];"
+            f"[tail][head]xfade=transition=fade:duration={overlap}:offset=0[fade];"
+            f"[mid][fade]concat=n=2:v=1:a=0[out]"
+        )
+        try:
+            subprocess.run([
+                ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-xerror",
+                "-i", str(video), "-filter_complex", vf,
+                "-map", "[out]", "-an", "-c:v", "libx264", "-preset", "veryfast",
+                "-pix_fmt", "yuv420p", "-y", str(video_loop),
+            ], check=True, capture_output=True, timeout=180)
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            if video_loop.exists():
+                video_loop.unlink()
+            raise RuntimeError("video crossfade preparation failed") from None
     command = [
         ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-xerror",
-        "-stream_loop", "-1", "-i", str(video),
+        "-stream_loop", "-1", "-i", str(video_loop if video_crossfade_seconds else video),
         "-stream_loop", "-1", "-i", str(audio_loop if audio_crossfade_seconds else audio),
         "-map", "0:v:0", "-map", "1:a:0", "-t", str(duration_seconds),
         "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
@@ -107,3 +151,5 @@ def render_ambient_loop(source_video: str, source_audio: str, output_mp4: str,
             temp.unlink()
         if audio_loop.exists():
             audio_loop.unlink()
+        if video_loop.exists():
+            video_loop.unlink()
