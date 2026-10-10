@@ -103,3 +103,7 @@ If a future remote request times out after dispatch, the state must be `REMOTE_U
 ## Audio loop crossfade candidate
 
 `render_ambient_loop(..., audio_crossfade_seconds=0.15)` optionally builds a wrap-around audio unit: source middle followed by equal-power crossfade of source tail and head, then repeats the resulting PCM waveform. This avoids a hard discontinuity at the audio loop reset. The default remains unchanged (`audio_crossfade_seconds=0`), and the overlap accepts up to 1 second. A real FFmpeg short-clip test checks encoded output, duration and audio stream. We have **not** measured audible click thresholds, music perceptual quality, visual loop seamlessness, or multi-hour resource usage. This is an isolated Candidate feature and does not upload videos.
+
+## Visual loop dissolve (Candidate)
+
+`render_ambient_loop(..., video_crossfade_seconds=0.15)` now optionally prepares a rotated video loop at a constant 24 fps by combining its middle segment with an FFmpeg dissolve from tail to head. This is an opt-in technical transition, **not proof of perceptual seamlessness**. Short FFmpeg fixture tests check codec, audio and duration. Slow 1–5h renders, memory, source-specific transitions, visual quality and manual listening/viewing remain unproven. Live publication remains disabled.
