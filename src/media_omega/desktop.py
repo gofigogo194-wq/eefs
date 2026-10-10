@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Thread
@@ -32,6 +33,10 @@ def create_local_video(video: str, audio: str, output: str, duration: float,
 
 
 def main() -> int:
+    # PyInstaller onedir deployment carries media tools beside the exe.
+    if getattr(sys, "frozen", False):
+        executable_dir = Path(sys.executable).resolve().parent
+        os.environ["PATH"] = str(executable_dir) + os.pathsep + os.environ.get("PATH", "")
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
 
