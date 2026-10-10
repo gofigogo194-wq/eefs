@@ -70,9 +70,20 @@ jobs:
           python -m pip install pyinstaller
           python -m PyInstaller --noconfirm --clean --onedir --windowed --name MEDIA_OMEGA desktop_entry.py
           if (-not (Test-Path 'dist/MEDIA_OMEGA/MEDIA_OMEGA.exe')) { throw 'Portable EXE missing' }
-          Copy-Item (Get-Command ffmpeg).Source 'dist/MEDIA_OMEGA/ffmpeg.exe'
-          Copy-Item (Get-Command ffprobe).Source 'dist/MEDIA_OMEGA/ffprobe.exe'
-          if (-not (Test-Path 'dist/MEDIA_OMEGA/ffmpeg.exe')) { throw 'Portable FFmpeg missing' }
+          $ffmpeg = Get-ChildItem "$env:ChocolateyInstall/lib/ffmpeg" -Filter ffmpeg.exe -File -Recurse |
+            Sort-Object Length -Descending | Select-Object -First 1
+          $ffprobe = Get-ChildItem "$env:ChocolateyInstall/lib/ffmpeg" -Filter ffprobe.exe -File -Recurse |
+            Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $ffmpeg -or -not $ffprobe) { throw 'Actual FFmpeg binaries unavailable' }
+          if ($ffmpeg.Length -lt 1000000 -or $ffprobe.Length -lt 1000000) {
+            throw 'FFmpeg executables are unexpectedly small (likely Chocolatey shims)'
+          }
+          Copy-Item $ffmpeg.FullName 'dist/MEDIA_OMEGA/ffmpeg.exe'
+          Copy-Item $ffprobe.FullName 'dist/MEDIA_OMEGA/ffprobe.exe'
+          & 'dist/MEDIA_OMEGA/ffmpeg.exe' -version
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged FFmpeg not executable' }
+          & 'dist/MEDIA_OMEGA/ffprobe.exe' -version
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged FFprobe not executable' }
           Compress-Archive -Path 'dist/MEDIA_OMEGA/*' -DestinationPath 'MEDIA_OMEGA_WINDOWS_CANDIDATE.zip' -Force
       - uses: actions/upload-artifact@v4
         with:
