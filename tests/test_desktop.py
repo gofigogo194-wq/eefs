@@ -24,7 +24,7 @@ def test_find_popular_requires_token(monkeypatch):
 def test_render_blocked_without_rights(monkeypatch):
     calls = []
     monkeypatch.setattr(desktop, "render_ambient_loop", lambda *a, **kw: calls.append(1))
-    with pytest.raises(ValueError, match="permission"):
+    with pytest.raises(ValueError, match="rights"):
         desktop.create_local_video("in.mp4", "audio.mp3", "out.mp4", 60, False)
     assert calls == []
 
