@@ -87,3 +87,7 @@ If a future remote request times out after dispatch, the state must be `REMOTE_U
 ## OAuth PKCE preparation and Windows media CI
 
 `youtube_oauth_readonly.py` generates a local OAuth2 authorization URL scoped ONLY to youtube.readonly, with a random state and PKCE S256 challenge. Only loopback HTTP callbacks are accepted; the code verifier remains in memory. No authorization-code exchange, local callback server, token persistence, refresh, or access to a Google account is implemented. Tests check rejection of unsafe callback addresses and state mismatches. Windows CI now installs FFmpeg and requires the actual MP4 decode integration test rather than silently skipping it. A green simulated OAuth test does not prove Google-approved credentials or real account access.
+
+## OAuth authorization-code exchange Candidate
+
+`youtube_oauth_exchange.py` performs a single-use PKCE authorization-code exchange against Google's fixed token endpoint, validates loopback callback origin and state, disallows HTTP redirects, and rejects missing or unexpectedly broad scopes. The access token remains in process memory and is not journaled. A failed or ambiguous exchange must restart authorization, never automatically reuse the same code. No real Google account authorization, refresh-token storage, long-term secret vault, callback HTTP server, or video upload has been implemented. OAuth exchange unit tests use a fake transport; they do not establish working live credentials.
