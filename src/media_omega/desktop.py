@@ -16,11 +16,12 @@ from .ambient_renderer import render_ambient_loop
 from .youtube_api_readonly import YouTubeReadOnlyAPI
 
 
-def find_popular(region: str, count: int) -> list[dict]:
+def find_popular(region: str, count: int, api_key: str = "") -> list[dict]:
     token = os.environ.get("MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN", "")
-    if not token:
-        raise ValueError("Read-only YouTube token is not set; popular search unavailable")
-    return YouTubeReadOnlyAPI(token).get_popular_videos(region_code=region, max_results=count)
+    key = api_key.strip() or os.environ.get("MEDIA_OMEGA_YOUTUBE_API_KEY", "")
+    if not token and not key:
+        raise ValueError("Enter a YouTube API key to search public popular videos")
+    return YouTubeReadOnlyAPI(token, api_key=key).get_popular_videos(region_code=region, max_results=count)
 
 
 def create_local_video(video: str, audio: str, output: str, duration: float,
@@ -48,6 +49,7 @@ def main() -> int:
 
     region = tk.StringVar(value="TH")
     count = tk.StringVar(value="10")
+    api_key = tk.StringVar()
     video = tk.StringVar()
     audio = tk.StringVar()
     output = tk.StringVar()
@@ -72,6 +74,11 @@ def main() -> int:
     ttk.Entry(row, textvariable=count, width=5).pack(side="left", padx=6)
     search_btn = ttk.Button(row, text="Find popular videos")
     search_btn.pack(side="left", padx=8)
+    key_row = ttk.Frame(top)
+    key_row.pack(fill="x", pady=(8, 0))
+    ttk.Label(key_row, text="YouTube API key").pack(side="left")
+    ttk.Entry(key_row, textvariable=api_key, show="*", width=46).pack(side="left", padx=6, fill="x", expand=True)
+    ttk.Label(key_row, text="Session only; not saved").pack(side="left")
     results = tk.Text(top, height=10, wrap="word", state="disabled")
     results.pack(fill="both", expand=True, pady=(8, 0))
     ttk.Label(top, text="Reuse rights are NOT verified. This list does not download videos.").pack(anchor="w")
@@ -114,8 +121,12 @@ def main() -> int:
             try:
                 work.put((success, task(), None))
             except Exception as exc:
-                # Never print exception details: HTTP errors may include URL data.
-                work.put((success, None, type(exc).__name__))
+                # Never print HTTP exception details: URLs can contain API credentials.
+                if isinstance(exc, ValueError):
+                    message = str(exc)
+                else:
+                    message = "API or media operation failed (" + type(exc).__name__ + ")"
+                work.put((success, None, message))
 
         Thread(target=worker, daemon=True).start()
 
@@ -139,7 +150,7 @@ def main() -> int:
         except ValueError:
             status.set("Invalid count")
             return
-        run_task(lambda: find_popular(code, n), show_results)
+        run_task(lambda: find_popular(code, n, api_key.get()), show_results)
 
     def start_render():
         try:
@@ -167,7 +178,7 @@ def main() -> int:
             search_btn.configure(state="normal")
             render_btn.configure(state="normal")
             if error:
-                status.set("Operation failed (" + error + "). Check inputs and FFmpeg configuration.")
+                status.set("Operation failed: " + error)
             else:
                 callback(data)
         root.after(150, poll)
