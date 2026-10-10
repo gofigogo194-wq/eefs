@@ -91,3 +91,7 @@ If a future remote request times out after dispatch, the state must be `REMOTE_U
 ## OAuth authorization-code exchange Candidate
 
 `youtube_oauth_exchange.py` performs a single-use PKCE authorization-code exchange against Google's fixed token endpoint, validates loopback callback origin and state, disallows HTTP redirects, and rejects missing or unexpectedly broad scopes. The access token remains in process memory and is not journaled. A failed or ambiguous exchange must restart authorization, never automatically reuse the same code. No real Google account authorization, refresh-token storage, long-term secret vault, callback HTTP server, or video upload has been implemented. OAuth exchange unit tests use a fake transport; they do not establish working live credentials.
+
+## One-shot OAuth to channel verification
+
+`ReadOnlyConnectionSession` now joins PKCE authorization preparation, callback validation, one-time code exchange, token-in-memory read-only GET, and expected-channel verification in one canonical path. An unsuccessful step consumes the attempt and requires fresh authorization; tests inject mock transports for success, wrong account, network errors, CSRF, and replay. No local HTTP callback listener, token persistence, real Google login, or upload exists. OAuth end-to-end has only been proven against fake responses; a target-machine real-account test is required before promotion.
