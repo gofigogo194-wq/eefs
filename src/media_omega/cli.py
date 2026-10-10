@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -124,6 +125,31 @@ def _intelligence_report(state_dir: str) -> int:
     return 0
 
 
+def _popular(region: str, count: int) -> int:
+    from .youtube_api_readonly import YouTubeReadOnlyAPI
+    token = os.environ.get("MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN")
+    if not token:
+        raise ValueError("set MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN for popular lookup")
+    videos = YouTubeReadOnlyAPI(token).get_popular_videos(region_code=region, max_results=count)
+    print(json.dumps({"ok": True, "mode": "READ_ONLY", "videos": videos}, ensure_ascii=False))
+    return 0
+
+
+def _render(video: str, audio: str, output: str, duration: float,
+            video_fade: float, audio_fade: float, rights_confirmed: bool) -> int:
+    from .ambient_renderer import render_ambient_loop
+    if not rights_confirmed:
+        raise ValueError("you must confirm rights to use both input files")
+    rendered = render_ambient_loop(
+        video, audio, output, duration_seconds=duration,
+        video_crossfade_seconds=video_fade,
+        audio_crossfade_seconds=audio_fade,
+    )
+    print(json.dumps({"ok": True, "mode": "LOCAL_RENDER", "published": False,
+                      "output": rendered}, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="media-omega")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -137,7 +163,23 @@ def main(argv: list[str] | None = None) -> int:
     intelligence = sub.add_parser("intelligence", help="rank tracked videos using creator baseline and momentum evidence")
     intelligence.add_argument("--state-dir", default=".media-omega")
 
+    popular = sub.add_parser("popular", help="list popular YouTube videos without downloading")
+    popular.add_argument("--region", default="US")
+    popular.add_argument("--count", type=int, default=10)
+    render = sub.add_parser("render", help="render licensed local video and music as MP4")
+    render.add_argument("--video", required=True)
+    render.add_argument("--audio", required=True)
+    render.add_argument("--output", required=True)
+    render.add_argument("--duration", type=float, required=True)
+    render.add_argument("--video-fade", type=float, default=0)
+    render.add_argument("--audio-fade", type=float, default=0)
+    render.add_argument("--rights-confirmed", action="store_true")
     args = parser.parse_args(argv)
+    if args.command == "popular":
+        return _popular(args.region, args.count)
+    if args.command == "render":
+        return _render(args.video, args.audio, args.output, args.duration,
+                       args.video_fade, args.audio_fade, args.rights_confirmed)
     if args.command == "youtube-probe":
         return _youtube_probe(args.video_id)
     if args.command == "scout":
