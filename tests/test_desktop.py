@@ -5,8 +5,9 @@ from media_omega import desktop
 
 def test_find_popular_uses_readonly_env_token(monkeypatch):
     class FakeAPI:
-        def __init__(self, access_token):
+        def __init__(self, access_token, *, api_key=""):
             assert access_token == "token"
+            assert api_key == ""
         def get_popular_videos(self, *, region_code, max_results):
             assert (region_code, max_results) == ("TH", 10)
             return [{"title": "Top", "reuse_permission": "NOT_VERIFIED"}]
@@ -39,3 +40,17 @@ def test_render_calls_existing_engine_with_safe_options(monkeypatch):
         return output
     monkeypatch.setattr(desktop, "render_ambient_loop", fake_render)
     assert desktop.create_local_video("mine.mp4", "mine.mp3", "done.mp4", 60, True) == "done.mp4"
+
+
+def test_find_popular_api_key_from_desktop(monkeypatch):
+    monkeypatch.delenv("MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN", raising=False)
+    monkeypatch.delenv("MEDIA_OMEGA_YOUTUBE_API_KEY", raising=False)
+    class FakeAPI:
+        def __init__(self, access_token, *, api_key):
+            assert access_token == ""
+            assert api_key == "session-key"
+        def get_popular_videos(self, *, region_code, max_results):
+            assert (region_code, max_results) == ("TH", 10)
+            return [{"title": "Music", "url": "https://www.youtube.com/watch?v=test", "views": 100}]
+    monkeypatch.setattr(desktop, "YouTubeReadOnlyAPI", FakeAPI)
+    assert desktop.find_popular("TH", 10, "session-key")[0]["title"] == "Music"
