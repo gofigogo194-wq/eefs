@@ -13,7 +13,8 @@ from .models import Decision
 def render_ambient_loop(source_video: str, source_audio: str, output_mp4: str,
                         *, duration_seconds: float, ffmpeg: str = "ffmpeg",
                         audio_crossfade_seconds: float = 0.0,
-                        video_crossfade_seconds: float = 0.0) -> str:
+                        video_crossfade_seconds: float = 0.0,
+                        video_loop_segment_seconds: float | None = None) -> str:
     """Loop a user-supplied video and audio to one exact-duration MP4.
 
     The seamlessness of loop boundaries depends on matching source endpoints;
@@ -31,6 +32,15 @@ def render_ambient_loop(source_video: str, source_audio: str, output_mp4: str,
             or not math.isfinite(video_crossfade_seconds)
             or not 0 <= video_crossfade_seconds <= 1):
         raise ValueError("video crossfade must be between 0 and 1 seconds")
+    if video_loop_segment_seconds is not None:
+        if (isinstance(video_loop_segment_seconds, bool)
+                or not isinstance(video_loop_segment_seconds, (int, float))
+                or not math.isfinite(video_loop_segment_seconds)
+                or video_loop_segment_seconds < 1
+                or video_loop_segment_seconds > 300):
+            raise ValueError("loop segment must be between 1 and 300 seconds")
+        if not video_crossfade_seconds:
+            raise ValueError("video crossfade required for segment looping")
     video = Path(source_video).resolve()
     audio = Path(source_audio).resolve()
     output = Path(output_mp4).resolve()
@@ -97,6 +107,8 @@ def render_ambient_loop(source_video: str, source_audio: str, output_mp4: str,
             length = float(json.loads(probe.stdout)["format"]["duration"])
         except (ValueError, KeyError, TypeError):
             raise RuntimeError("invalid video duration") from None
+        if video_loop_segment_seconds is not None:
+            length = min(length, float(video_loop_segment_seconds))
         overlap = float(video_crossfade_seconds)
         if not math.isfinite(length) or length <= overlap * 3:
             raise ValueError("video must be longer than three crossfade intervals")
@@ -113,7 +125,7 @@ def render_ambient_loop(source_video: str, source_audio: str, output_mp4: str,
         try:
             subprocess.run([
                 ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-xerror",
-                "-i", str(video), "-filter_complex", vf,
+                "-t", str(length), "-i", str(video), "-filter_complex", vf,
                 "-map", "[out]", "-an", "-c:v", "libx264", "-preset", "veryfast",
                 "-pix_fmt", "yuv420p", "-y", str(video_loop),
             ], check=True, capture_output=True, timeout=180)
