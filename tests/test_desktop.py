@@ -18,7 +18,7 @@ def test_find_popular_uses_readonly_env_token(monkeypatch):
 
 def test_find_popular_requires_token(monkeypatch):
     monkeypatch.delenv("MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN", raising=False)
-    with pytest.raises(ValueError, match="token"):
+    with pytest.raises(ValueError, match="API key"):
         desktop.find_popular("TH", 10)
 
 
