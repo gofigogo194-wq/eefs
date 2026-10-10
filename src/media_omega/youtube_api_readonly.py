@@ -83,3 +83,45 @@ class YouTubeReadOnlyAPI:
             "channel_id": video["snippet"].get("channelId"),
             "privacy_status": video["status"].get("privacyStatus"),
         }
+
+    def get_popular_videos(self, *, region_code: str = "US", max_results: int = 20) -> list[dict]:
+        """Get YouTube's published mostPopular chart, not reuse permissions."""
+        if not isinstance(region_code, str) or len(region_code) != 2 or not region_code.isascii() or not region_code.isalpha():
+            raise ValueError("two-letter region code required")
+        if isinstance(max_results, bool) or not isinstance(max_results, int) or not 1 <= max_results <= 50:
+            raise ValueError("max_results must be between 1 and 50")
+        data = self._get("videos", {
+            "part": "snippet,statistics,status",
+            "chart": "mostPopular",
+            "regionCode": region_code.upper(),
+            "maxResults": max_results,
+        })
+        items = data.get("items")
+        if not isinstance(items, list):
+            raise RuntimeError("invalid popular videos response")
+        result = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            snippet = item.get("snippet")
+            if not isinstance(snippet, dict):
+                continue
+            video_id = item.get("id")
+            if not isinstance(video_id, str) or not video_id:
+                continue
+            counts = item.get("statistics", {})
+            if not isinstance(counts, dict):
+                counts = {}
+            try:
+                views = int(counts.get("viewCount", 0))
+            except (ValueError, TypeError):
+                views = 0
+            result.append({
+                "video_id": video_id,
+                "url": "https://www.youtube.com/watch?v=" + video_id,
+                "title": str(snippet.get("title", "")),
+                "channel_id": str(snippet.get("channelId", "")),
+                "views": max(0, views),
+                "reuse_permission": "NOT_VERIFIED",
+            })
+        return result
