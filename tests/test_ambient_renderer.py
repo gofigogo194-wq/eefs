@@ -112,7 +112,7 @@ def test_short_segment_loops_without_processing_whole_source(tmp_path):
     result = render_ambient_loop(str(video), str(audio), str(tmp_path / "created.mp4"),
                                  duration_seconds=7,
                                  video_crossfade_seconds=0.7,
-                                 video_loop_segment_seconds=2)
+                                 video_loop_segment_seconds=3)
     assert Path(result).exists()
     gate, report = inspect_video(result)
     assert gate.decision is Decision.ACCEPT
