@@ -49,3 +49,25 @@ Initial candidates being evaluated:
 - Additional creator/trend/outlier components will be audited before adoption.
 
 See `docs/ARCHITECTURE.md` and `docs/OPEN_SOURCE_AUDIT.md`.
+
+## Windows desktop — find popular YouTube videos
+
+The **Find popular videos** button is read-only. It uses YouTube Data API v3
+`videos.list(chart=mostPopular)` with the selected two-letter region and result count (1–50).
+This is a regional public popularity chart, **not** a claim that the videos are
+safe to re-use, nor a guarantee of early trends, viral prediction or downloads.
+
+To enable it, create a YouTube Data API v3 API key in your own Google Cloud
+project with the YouTube Data API v3 enabled. Restrict the key to this API;
+never put it in source code, a screenshot, a GitHub issue or a shared archive.
+Enter the key in the masked **YouTube API key** field. MEDIA Ω holds this key
+only in application memory for the current run; it is not persisted to files.
+The standard YouTube API key is transmitted as the documented HTTPS query
+parameter to Google's API. Avoid sharing diagnostic URLs containing credentials.
+
+For automated setups the `MEDIA_OMEGA_YOUTUBE_API_KEY` environment variable
+is also supported. Existing session OAuth bearer tokens via
+`MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN` still work and take precedence. No YouTube
+upload, OAuth sign-in, download or public publication is implemented in this desktop.
+CI tests mock API responses: **a live account/API-key search on the user's Windows
+machine is still a separate acceptance test**.
