@@ -57,5 +57,10 @@ jobs:
           choco install ffmpeg --yes --no-progress
           ffmpeg -version
           ffprobe -version
+      - name: Verify Windows desktop Tkinter bootstrap without GUI display
+        shell: pwsh
+        run: |
+          python -c "import tkinter; import media_omega.desktop; t=tkinter.Tcl(); assert t.eval('expr 2 + 2') == '4'"
+          if (-not (Test-Path 'START_MEDIA_OMEGA_WINDOWS.bat')) { throw 'Windows launcher missing' }
       - name: Run tests
         run: python -m pytest -q
