@@ -95,3 +95,7 @@ If a future remote request times out after dispatch, the state must be `REMOTE_U
 ## One-shot OAuth to channel verification
 
 `ReadOnlyConnectionSession` now joins PKCE authorization preparation, callback validation, one-time code exchange, token-in-memory read-only GET, and expected-channel verification in one canonical path. An unsuccessful step consumes the attempt and requires fresh authorization; tests inject mock transports for success, wrong account, network errors, CSRF, and replay. No local HTTP callback listener, token persistence, real Google login, or upload exists. OAuth end-to-end has only been proven against fake responses; a target-machine real-account test is required before promotion.
+
+## First real ambient MP4 creator
+
+`render_ambient_loop(video, audio, output_mp4, duration_seconds=...)` assembles a local H.264/AAC MP4 from user-provided video and audio by looping both inputs to a specified duration of up to five hours. It writes a temporary `.partial.mp4`, probes codec/audio/duration, fully decodes the output, and only then atomically renames to the requested path; failure deletes the partial output and never overwrites the source or an existing output. This proves valid MP4 assembly only for tested short fixtures; smooth visual/audio loop transitions, production 1–5 hour performance, rights ownership, and integration with the Orchestrator's asset manifest remain future gates. No YouTube upload is possible through this module.
