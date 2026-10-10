@@ -83,3 +83,36 @@ def test_visual_crossfade_rejects_undersized_source(tmp_path):
     with pytest.raises(ValueError, match="three crossfade"):
         render_ambient_loop(str(video), str(audio), str(tmp_path / "result.mp4"),
                             duration_seconds=1, video_crossfade_seconds=0.10)
+
+
+def test_segment_loop_validation_rejects_bad_period(tmp_path):
+    for value in (0, -1, float("nan"), 301, True):
+        with pytest.raises(ValueError, match="loop segment"):
+            render_ambient_loop("none", "none", str(tmp_path / "out.mp4"),
+                                duration_seconds=2, video_crossfade_seconds=0.5,
+                                video_loop_segment_seconds=value)
+    with pytest.raises(ValueError, match="video crossfade required"):
+        render_ambient_loop("none", "none", str(tmp_path / "out.mp4"),
+                            duration_seconds=2, video_loop_segment_seconds=5)
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
+                    reason="real FFmpeg required")
+def test_short_segment_loops_without_processing_whole_source(tmp_path):
+    video = tmp_path / "six_seconds.mp4"
+    audio = tmp_path / "one_second.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                    "testsrc2=size=160x120:rate=24", "-t", "6",
+                    "-c:v", "mpeg4", "-y", str(video)],
+                   check=True, capture_output=True, timeout=40)
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                    "sine=frequency=450", "-t", "1", "-y", str(audio)],
+                   check=True, capture_output=True, timeout=30)
+    result = render_ambient_loop(str(video), str(audio), str(tmp_path / "created.mp4"),
+                                 duration_seconds=7,
+                                 video_crossfade_seconds=0.7,
+                                 video_loop_segment_seconds=2)
+    assert Path(result).exists()
+    gate, report = inspect_video(result)
+    assert gate.decision is Decision.ACCEPT
+    assert abs(report["duration_seconds"] - 7) < 0.35
