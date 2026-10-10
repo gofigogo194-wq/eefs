@@ -7,7 +7,12 @@ from __future__ import annotations
 import json
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import Request, build_opener
+from urllib.request import Request, build_opener, HTTPRedirectHandler
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 class YouTubeReadOnlyAPI:
@@ -21,7 +26,7 @@ class YouTubeReadOnlyAPI:
             raise ValueError("invalid request timeout")
         self._token = access_token
         self._timeout = timeout
-        self._opener = opener if opener is not None else build_opener()
+        self._opener = opener if opener is not None else build_opener(_NoRedirect())
 
     def _get(self, resource: str, query: dict) -> dict:
         if resource not in self.ALLOWED_PATHS:
@@ -33,9 +38,6 @@ class YouTubeReadOnlyAPI:
                 "Accept": "application/json",
             }, method="GET",
         )
-        # urllib's opener may follow redirects (including cross-host redirects)
-        # and forward Authorization. Reject redirects outright below with
-        # a custom handler in a subsequent hardened implementation.
         try:
             with self._opener.open(request, timeout=self._timeout) as response:
                 data = response.read(1024 * 1024 + 1)
