@@ -33,7 +33,8 @@ def test_render_calls_existing_engine_with_safe_options(monkeypatch):
     def fake_render(video, audio, output, **options):
         assert (video, audio, output) == ("mine.mp4", "mine.mp3", "done.mp4")
         assert options == {"duration_seconds": 60,
-                           "video_crossfade_seconds": 0.15,
+                           "video_crossfade_seconds": 0.7,
+                           "video_loop_segment_seconds": 5.0,
                            "audio_crossfade_seconds": 0.15}
         return output
     monkeypatch.setattr(desktop, "render_ambient_loop", fake_render)
