@@ -75,3 +75,7 @@ The atomic offline receipt writer additionally checks for an actual SCHEDULED tr
 `youtube_upload_contract.py` introduces a pure deterministic intent bound to schedule, plan, manifest, verification, channel identifier, and SHA256 of the asset. Its channel equality check compares supplied identifiers and is **not OAuth verification**. No uploader, API credentials, authenticated channel readback, remote receipt, or public/private YouTube operation is implemented.
 
 If a future remote request times out after dispatch, the state must be `REMOTE_UNKNOWN`, not a successful upload and not safe to retry. `may_retry_upload` deliberately returns false for all states until the real reconciliation/readback proof and explicit authorization are implemented. This is a safety specification with unit tests, not proof of network idempotency.
+
+## Read-only YouTube reconciliation candidate
+
+`youtube_readback.py` defines an injectable read-only transport for authenticated channel identity and remote-video metadata. It has no real OAuth implementation or HTTP client. Missing permissions, timeouts, absent videos, foreign channels, and public visibility are fail-closed. Even a matching channel/video/private readback remains REMOTE_UNKNOWN because those fields cannot prove that the planned file bytes were uploaded. A future production design needs a durable remote upload attempt identifier plus strong server evidence before any publication transition or retry. No network write or real publishing capability is implemented.
