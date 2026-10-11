@@ -34,6 +34,20 @@ def find_topic(query: str, region: str, count: int, api_key: str = "") -> list[d
         query, region_code=region, max_results=count)
 
 
+
+def format_topic_results(data: list[dict]) -> str:
+    """Plain-text video listings with real line breaks, never literal backslash-n."""
+    lines = []
+    for i, item in enumerate(data, 1):
+        lines.append(
+            f'{i}. {item["title"]} — {item["views"]} views\n'
+            f'Channel: {item["channel_title"]} | Published: {item["published_at"]}'
+            f' | Duration: {item["duration_iso"]}\n'
+            f'{item["url"]}\nRights: NOT VERIFIED'
+        )
+    return "\n\n".join(lines) or "No videos found"
+
+
 def create_local_video(video: str, audio: str, output: str, duration: float,
                        rights_confirmed: bool, loop_seconds: float = 5.0) -> str:
     if not rights_confirmed:
@@ -180,16 +194,9 @@ def main() -> int:
                                     n, api_key.get()), show_topic_results)
 
     def show_topic_results(data):
-        lines = [
-            f'{i}. {x["title"]} — {x["views"]} views'
-            f'\\nChannel: {x["channel_title"]} | Published: {x["published_at"]}'
-            f' | Duration: {x["duration_iso"]}'
-            f'\\n{x["url"]}\\nRights: NOT VERIFIED\\n'
-            for i, x in enumerate(data, 1)
-        ]
         results.configure(state="normal")
         results.delete("1.0", "end")
-        results.insert("1.0", "\\n".join(lines) or "No videos found")
+        results.insert("1.0", format_topic_results(data))
         results.configure(state="disabled")
         status.set(f"Found {len(data)} videos by topic (relevance order, NOT a trending rank).")
 
