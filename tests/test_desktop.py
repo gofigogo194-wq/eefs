@@ -63,11 +63,11 @@ def test_find_topic_uses_session_api_key(monkeypatch):
         def __init__(self, token, *, api_key):
             assert token == ""
             assert api_key == "test-key"
-        def search_topic_videos(self, query, *, region_code, max_results):
-            assert (query, region_code, max_results) == ("fireplace", "TH", 10)
+        def search_topic_videos(self, query, *, region_code, max_results, recent_days):
+            assert (query, region_code, max_results, recent_days) == ("fireplace", "TH", 10, 30)
             return [{"title": "Fireplace"}]
     monkeypatch.setattr(desktop, "YouTubeReadOnlyAPI", FakeAPI)
-    assert desktop.find_topic("fireplace", "TH", 10, "test-key")[0]["title"] == "Fireplace"
+    assert desktop.find_topic("fireplace", "TH", 10, "test-key", 30)[0]["title"] == "Fireplace"
 
 
 def test_topic_results_use_real_line_breaks_not_literal_escape_sequences():
