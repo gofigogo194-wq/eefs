@@ -111,3 +111,49 @@ def test_api_key_does_not_unlock_account_or_nonpublic_read():
         api.get_video("an-id")
     with pytest.raises(ValueError, match="API key or access token"):
         YouTubeReadOnlyAPI()
+
+
+class SequencedOpener:
+    def __init__(self, data):
+        self.responses = list(data)
+        self.calls = []
+    def open(self, request, timeout):
+        self.calls.append(request)
+        return FakeResponse(self.responses.pop(0))
+
+
+def test_topic_search_public_two_step_enrichment_and_order():
+    opener = SequencedOpener([
+        {"items": [{"id": {"videoId": "B"}}, {"id": {"videoId": "A"}},
+                   {"id": {"videoId": "B"}}, {"id": {"channelId": "ignored"}}]},
+        {"items": [
+            {"id": "A", "snippet": {"title": "Rain", "channelTitle": "Nature",
+                                  "publishedAt": "2026-01-01T00:00:00Z"},
+             "statistics": {"viewCount": "40"}, "contentDetails": {"duration": "PT1H"}},
+            {"id": "B", "snippet": {"title": "Fire", "channelTitle": "Calm",
+                                  "publishedAt": "2026-01-02T00:00:00Z"},
+             "statistics": {"viewCount": "123"}, "contentDetails": {"duration": "PT2H"}},
+        ]},
+    ])
+    api = YouTubeReadOnlyAPI(api_key="session-key", opener=opener)
+    rows = api.search_topic_videos("relax fireplace", region_code="TH", max_results=10)
+    assert [x["video_id"] for x in rows] == ["B", "A"]
+    assert rows[0]["views"] == 123
+    assert rows[0]["duration_iso"] == "PT2H"
+    assert rows[0]["reuse_permission"] == "NOT_VERIFIED"
+    assert len(opener.calls) == 2
+    assert all(x.get_method() == "GET" for x in opener.calls)
+    assert "q=relax+fireplace" in opener.calls[0].full_url
+    assert "type=video" in opener.calls[0].full_url
+    assert "id=B%2CA" in opener.calls[1].full_url
+
+
+def test_topic_search_validates_without_network():
+    api = YouTubeReadOnlyAPI(api_key="key", opener=RecordingOpener({}))
+    for query in ("", "x", "x" * 101):
+        with pytest.raises(ValueError, match="Search phrase"):
+            api.search_topic_videos(query)
+    with pytest.raises(ValueError, match="region"):
+        api.search_topic_videos("sleep music", region_code="invalid")
+    with pytest.raises(ValueError, match="max_results"):
+        api.search_topic_videos("sleep music", max_results=51)
