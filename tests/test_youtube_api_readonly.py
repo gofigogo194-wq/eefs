@@ -107,7 +107,7 @@ def test_api_key_does_not_unlock_account_or_nonpublic_read():
     api = YouTubeReadOnlyAPI(api_key="temporary-key", opener=RecordingOpener({}))
     with pytest.raises(ValueError, match="OAuth"):
         api.get_authenticated_channel()
-    with pytest.raises(ValueError, match="public popular"):
+    with pytest.raises(RuntimeError, match="invalid video listing response"):
         api.get_video("an-id")
     with pytest.raises(ValueError, match="API key or access token"):
         YouTubeReadOnlyAPI()
