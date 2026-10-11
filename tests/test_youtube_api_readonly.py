@@ -157,3 +157,28 @@ def test_topic_search_validates_without_network():
         api.search_topic_videos("sleep music", region_code="invalid")
     with pytest.raises(ValueError, match="max_results"):
         api.search_topic_videos("sleep music", max_results=51)
+
+
+def test_topic_freshness_applies_server_side_and_never_changes_default():
+    from datetime import datetime, timedelta, timezone
+    for days in (7, 30, 90):
+        opener = SequencedOpener([{"items": []}])
+        before = datetime.now(timezone.utc) - timedelta(days=days)
+        rows = YouTubeReadOnlyAPI(api_key="key", opener=opener).search_topic_videos(
+            "rain sounds", recent_days=days)
+        after = datetime.now(timezone.utc) - timedelta(days=days)
+        assert rows == []
+        from urllib.parse import parse_qs, urlsplit
+        params = parse_qs(urlsplit(opener.calls[0].full_url).query)
+        actual = datetime.strptime(params["publishedAfter"][0], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        assert before - timedelta(seconds=1) <= actual <= after
+    opener = SequencedOpener([{"items": []}])
+    YouTubeReadOnlyAPI(api_key="key", opener=opener).search_topic_videos("rain sounds")
+    assert "publishedAfter=" not in opener.calls[0].full_url
+
+
+def test_topic_freshness_rejects_unsupported_ranges():
+    api = YouTubeReadOnlyAPI(api_key="key", opener=RecordingOpener({}))
+    for invalid in (0, 1, 365, True, "30"):
+        with pytest.raises(ValueError, match="freshness"):
+            api.search_topic_videos("sleep music", recent_days=invalid)
