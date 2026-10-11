@@ -68,3 +68,17 @@ def test_find_topic_uses_session_api_key(monkeypatch):
             return [{"title": "Fireplace"}]
     monkeypatch.setattr(desktop, "YouTubeReadOnlyAPI", FakeAPI)
     assert desktop.find_topic("fireplace", "TH", 10, "test-key")[0]["title"] == "Fireplace"
+
+
+def test_topic_results_use_real_line_breaks_not_literal_escape_sequences():
+    rows = [{
+        "title": "Relaxing waterfall", "views": 123,
+        "channel_title": "Nature", "published_at": "2026-01-01T00:00:00Z",
+        "duration_iso": "PT1H", "url": "https://www.youtube.com/watch?v=abc",
+    }]
+    result = desktop.format_topic_results(rows)
+    assert "\\n" not in result
+    assert "123 views\nChannel: Nature" in result
+    assert "PT1H\nhttps://" in result
+    assert "Rights: NOT VERIFIED" in result
+    assert desktop.format_topic_results([]) == "No videos found"
