@@ -25,13 +25,14 @@ def find_popular(region: str, count: int, api_key: str = "") -> list[dict]:
 
 
 
-def find_topic(query: str, region: str, count: int, api_key: str = "") -> list[dict]:
+def find_topic(query: str, region: str, count: int, api_key: str = "",
+               recent_days: int | None = None) -> list[dict]:
     token = os.environ.get("MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN", "")
     key = api_key.strip() or os.environ.get("MEDIA_OMEGA_YOUTUBE_API_KEY", "")
     if not token and not key:
         raise ValueError("Enter a YouTube API key to search videos")
     return YouTubeReadOnlyAPI(token, api_key=key).search_topic_videos(
-        query, region_code=region, max_results=count)
+        query, region_code=region, max_results=count, recent_days=recent_days)
 
 
 
@@ -75,6 +76,7 @@ def main() -> int:
     count = tk.StringVar(value="10")
     api_key = tk.StringVar()
     topic = tk.StringVar(value="relaxing nature sounds")
+    freshness = tk.StringVar(value="Any")
     video = tk.StringVar()
     audio = tk.StringVar()
     output = tk.StringVar()
@@ -108,6 +110,8 @@ def main() -> int:
     topic_row.pack(fill="x", pady=(7, 0))
     ttk.Label(topic_row, text="Topic").pack(side="left")
     ttk.Entry(topic_row, textvariable=topic, width=40).pack(side="left", padx=6, fill="x", expand=True)
+    ttk.Label(topic_row, text="Published").pack(side="left", padx=(8, 0))
+    ttk.Combobox(topic_row, textvariable=freshness, values=("Any", "7 days", "30 days", "90 days"), state="readonly", width=8).pack(side="left", padx=5)
     topic_btn = ttk.Button(topic_row, text="Find by topic (100 quota units)")
     topic_btn.pack(side="left")
     results = tk.Text(top, height=10, wrap="word", state="disabled")
@@ -190,8 +194,9 @@ def main() -> int:
         except ValueError:
             status.set("Invalid count")
             return
+        days = {"Any": None, "7 days": 7, "30 days": 30, "90 days": 90}.get(freshness.get())
         run_task(lambda: find_topic(topic.get(), region.get().strip().upper(),
-                                    n, api_key.get()), show_topic_results)
+                                    n, api_key.get(), days), show_topic_results)
 
     def show_topic_results(data):
         results.configure(state="normal")
