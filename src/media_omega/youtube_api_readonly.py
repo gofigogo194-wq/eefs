@@ -5,6 +5,7 @@ An access token is supplied by the caller in memory. Do not journal or log it.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -139,7 +140,7 @@ class YouTubeReadOnlyAPI:
         return result
 
     def search_topic_videos(self, query: str, *, region_code: str = "TH",
-                            max_results: int = 10) -> list[dict]:
+                            max_results: int = 10, recent_days: int | None = None) -> list[dict]:
         """Search public video titles, enrich with real view counts and durations.
 
         Results are YouTube relevance-ranked, not certified trending.
@@ -151,11 +152,17 @@ class YouTubeReadOnlyAPI:
             raise ValueError("two-letter region code required")
         if isinstance(max_results, bool) or not isinstance(max_results, int) or not 1 <= max_results <= 50:
             raise ValueError("max_results must be between 1 and 50")
-        listing = self._get("search", {
+        if recent_days not in (None, 7, 30, 90) or isinstance(recent_days, bool):
+            raise ValueError("freshness must be Any, 7, 30 or 90 days")
+        parameters = {
             "part": "snippet", "type": "video", "q": query.strip(),
             "regionCode": region_code.upper(), "maxResults": max_results,
             "order": "relevance", "safeSearch": "moderate",
-        })
+        }
+        if recent_days is not None:
+            threshold = datetime.now(timezone.utc) - timedelta(days=recent_days)
+            parameters["publishedAfter"] = threshold.strftime("%Y-%m-%dT%H:%M:%SZ")
+        listing = self._get("search", parameters)
         entries = listing.get("items")
         if not isinstance(entries, list):
             raise RuntimeError("invalid search response")
