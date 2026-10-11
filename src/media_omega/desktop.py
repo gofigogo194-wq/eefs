@@ -24,6 +24,16 @@ def find_popular(region: str, count: int, api_key: str = "") -> list[dict]:
     return YouTubeReadOnlyAPI(token, api_key=key).get_popular_videos(region_code=region, max_results=count)
 
 
+
+def find_topic(query: str, region: str, count: int, api_key: str = "") -> list[dict]:
+    token = os.environ.get("MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN", "")
+    key = api_key.strip() or os.environ.get("MEDIA_OMEGA_YOUTUBE_API_KEY", "")
+    if not token and not key:
+        raise ValueError("Enter a YouTube API key to search videos")
+    return YouTubeReadOnlyAPI(token, api_key=key).search_topic_videos(
+        query, region_code=region, max_results=count)
+
+
 def create_local_video(video: str, audio: str, output: str, duration: float,
                        rights_confirmed: bool, loop_seconds: float = 5.0) -> str:
     if not rights_confirmed:
@@ -50,6 +60,7 @@ def main() -> int:
     region = tk.StringVar(value="TH")
     count = tk.StringVar(value="10")
     api_key = tk.StringVar()
+    topic = tk.StringVar(value="relaxing nature sounds")
     video = tk.StringVar()
     audio = tk.StringVar()
     output = tk.StringVar()
@@ -79,6 +90,12 @@ def main() -> int:
     ttk.Label(key_row, text="YouTube API key").pack(side="left")
     ttk.Entry(key_row, textvariable=api_key, show="*", width=46).pack(side="left", padx=6, fill="x", expand=True)
     ttk.Label(key_row, text="Session only; not saved").pack(side="left")
+    topic_row = ttk.Frame(top)
+    topic_row.pack(fill="x", pady=(7, 0))
+    ttk.Label(topic_row, text="Topic").pack(side="left")
+    ttk.Entry(topic_row, textvariable=topic, width=40).pack(side="left", padx=6, fill="x", expand=True)
+    topic_btn = ttk.Button(topic_row, text="Find by topic (100 quota units)")
+    topic_btn.pack(side="left")
     results = tk.Text(top, height=10, wrap="word", state="disabled")
     results.pack(fill="both", expand=True, pady=(8, 0))
     ttk.Label(top, text="Reuse rights are NOT verified. This list does not download videos.").pack(anchor="w")
@@ -114,6 +131,7 @@ def main() -> int:
             return
         active[0] = True
         search_btn.configure(state="disabled")
+        topic_btn.configure(state="disabled")
         render_btn.configure(state="disabled")
         status.set("Working...")
 
@@ -152,6 +170,29 @@ def main() -> int:
             return
         run_task(lambda: find_popular(code, n, api_key.get()), show_results)
 
+    def start_topic():
+        try:
+            n = int(count.get())
+        except ValueError:
+            status.set("Invalid count")
+            return
+        run_task(lambda: find_topic(topic.get(), region.get().strip().upper(),
+                                    n, api_key.get()), show_topic_results)
+
+    def show_topic_results(data):
+        lines = [
+            f'{i}. {x["title"]} — {x["views"]} views'
+            f'\\nChannel: {x["channel_title"]} | Published: {x["published_at"]}'
+            f' | Duration: {x["duration_iso"]}'
+            f'\\n{x["url"]}\\nRights: NOT VERIFIED\\n'
+            for i, x in enumerate(data, 1)
+        ]
+        results.configure(state="normal")
+        results.delete("1.0", "end")
+        results.insert("1.0", "\\n".join(lines) or "No videos found")
+        results.configure(state="disabled")
+        status.set(f"Found {len(data)} videos by topic (relevance order, NOT a trending rank).")
+
     def start_render():
         try:
             seconds = float(duration.get())
@@ -166,6 +207,7 @@ def main() -> int:
         run_task(lambda: create_local_video(*args), show_render)
 
     search_btn.configure(command=start_find)
+    topic_btn.configure(command=start_topic)
     render_btn.configure(command=start_render)
 
     def poll():
@@ -176,6 +218,7 @@ def main() -> int:
         else:
             active[0] = False
             search_btn.configure(state="normal")
+            topic_btn.configure(state="normal")
             render_btn.configure(state="normal")
             if error:
                 status.set("Operation failed: " + error)
