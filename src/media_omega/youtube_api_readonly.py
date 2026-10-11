@@ -17,7 +17,7 @@ class _NoRedirect(HTTPRedirectHandler):
 
 class YouTubeReadOnlyAPI:
     BASE_URL = "https://www.googleapis.com/youtube/v3/"
-    ALLOWED_PATHS = frozenset({"channels", "videos"})
+    ALLOWED_PATHS = frozenset({"channels", "videos", "search"})
 
     def __init__(self, access_token: str = "", *, api_key: str = "", timeout: float = 10.0, opener=None):
         if not isinstance(access_token, str) or not isinstance(api_key, str):
@@ -41,8 +41,9 @@ class YouTubeReadOnlyAPI:
         parameters = dict(query)
         # API keys are only for public most-popular charts; not account reads.
         if not self._token:
-            if resource != "videos" or parameters.get("chart") != "mostPopular":
-                raise ValueError("API key mode allows public popular videos only")
+            if not ((resource == "videos" and (parameters.get("chart") == "mostPopular" or parameters.get("id")))
+                    or (resource == "search" and parameters.get("type") == "video")):
+                raise ValueError("API key mode allows public video discovery only")
             parameters["key"] = self._api_key
         url = self.BASE_URL + resource + "?" + urlencode(parameters)
         headers = {"Accept": "application/json"}
@@ -136,3 +137,68 @@ class YouTubeReadOnlyAPI:
                 "reuse_permission": "NOT_VERIFIED",
             })
         return result
+
+    def search_topic_videos(self, query: str, *, region_code: str = "TH",
+                            max_results: int = 10) -> list[dict]:
+        """Search public video titles, enrich with real view counts and durations.
+
+        Results are YouTube relevance-ranked, not certified trending.
+        search.list costs 100 API quota units per request.
+        """
+        if not isinstance(query, str) or not 2 <= len(query.strip()) <= 100:
+            raise ValueError("Search phrase must contain 2 to 100 characters")
+        if not isinstance(region_code, str) or len(region_code) != 2 or not region_code.isascii() or not region_code.isalpha():
+            raise ValueError("two-letter region code required")
+        if isinstance(max_results, bool) or not isinstance(max_results, int) or not 1 <= max_results <= 50:
+            raise ValueError("max_results must be between 1 and 50")
+        listing = self._get("search", {
+            "part": "snippet", "type": "video", "q": query.strip(),
+            "regionCode": region_code.upper(), "maxResults": max_results,
+            "order": "relevance", "safeSearch": "moderate",
+        })
+        entries = listing.get("items")
+        if not isinstance(entries, list):
+            raise RuntimeError("invalid search response")
+        ids = []
+        for entry in entries:
+            if isinstance(entry, dict) and isinstance(entry.get("id"), dict):
+                ident = entry["id"].get("videoId")
+                if isinstance(ident, str) and ident and ident not in ids:
+                    ids.append(ident)
+        if not ids:
+            return []
+        details = self._get("videos", {
+            "part": "snippet,statistics,contentDetails",
+            "id": ",".join(ids), "maxResults": len(ids),
+        })
+        items = details.get("items")
+        if not isinstance(items, list):
+            raise RuntimeError("invalid search video details")
+        by_id = {}
+        for entry in items:
+            if not isinstance(entry, dict):
+                continue
+            ident = entry.get("id")
+            snippet = entry.get("snippet")
+            if ident not in ids or not isinstance(snippet, dict):
+                continue
+            stats = entry.get("statistics")
+            if not isinstance(stats, dict):
+                stats = {}
+            try:
+                views = max(0, int(stats.get("viewCount", 0)))
+            except (TypeError, ValueError):
+                views = 0
+            detail = entry.get("contentDetails")
+            by_id[ident] = {
+                "video_id": ident,
+                "url": "https://www.youtube.com/watch?v=" + ident,
+                "title": str(snippet.get("title", "")),
+                "channel_id": str(snippet.get("channelId", "")),
+                "channel_title": str(snippet.get("channelTitle", "")),
+                "published_at": str(snippet.get("publishedAt", "")),
+                "duration_iso": str(detail.get("duration", "")) if isinstance(detail, dict) else "",
+                "views": views,
+                "reuse_permission": "NOT_VERIFIED",
+            }
+        return [by_id[ident] for ident in ids if ident in by_id]
