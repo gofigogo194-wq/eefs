@@ -54,3 +54,17 @@ def test_find_popular_api_key_from_desktop(monkeypatch):
             return [{"title": "Music", "url": "https://www.youtube.com/watch?v=test", "views": 100}]
     monkeypatch.setattr(desktop, "YouTubeReadOnlyAPI", FakeAPI)
     assert desktop.find_popular("TH", 10, "session-key")[0]["title"] == "Music"
+
+
+def test_find_topic_uses_session_api_key(monkeypatch):
+    monkeypatch.delenv("MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN", raising=False)
+    monkeypatch.delenv("MEDIA_OMEGA_YOUTUBE_API_KEY", raising=False)
+    class FakeAPI:
+        def __init__(self, token, *, api_key):
+            assert token == ""
+            assert api_key == "test-key"
+        def search_topic_videos(self, query, *, region_code, max_results):
+            assert (query, region_code, max_results) == ("fireplace", "TH", 10)
+            return [{"title": "Fireplace"}]
+    monkeypatch.setattr(desktop, "YouTubeReadOnlyAPI", FakeAPI)
+    assert desktop.find_topic("fireplace", "TH", 10, "test-key")[0]["title"] == "Fireplace"
