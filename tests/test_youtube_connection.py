@@ -76,3 +76,41 @@ def test_csrf_mismatch_is_terminal_without_network():
     assert not token.calls and not api.calls
     with pytest.raises(RuntimeError, match="consumed"):
         session.complete(callback)
+
+
+def test_upload_scoped_connection_confirms_channel_without_upload():
+    from media_omega.youtube_connection import UploadConnectionSession
+    from media_omega.youtube_oauth_readonly import UPLOAD_SCOPE
+    token = Opener({"access_token": "secret", "expires_in": 3600, "scope": UPLOAD_SCOPE})
+    api = Opener({"items": [{"id": "UC-owner"}]})
+    session = UploadConnectionSession(
+        "client", "http://127.0.0.1:8765/", "UC-owner",
+        token_opener=token, api_opener=api,
+    )
+    assert "youtube.upload" in session.authorization_url
+    callback = session.authorization.redirect_uri + "?code=x&state=" + session.authorization.state
+    connected = session.complete(callback)
+    assert connected.authorized is True
+    assert connected.mode == "UPLOAD"
+    assert connected.channel_id == "UC-owner"
+    assert connected.published is False
+    assert len(token.calls) == 1
+    assert len(api.calls) == 1
+    assert api.calls[0].get_method() == "GET"
+
+
+def test_upload_scoped_wrong_channel_and_scope_are_terminal():
+    from media_omega.youtube_connection import UploadConnectionSession
+    from media_omega.youtube_oauth_readonly import UPLOAD_SCOPE
+    for channel, scope in (("UC-other", UPLOAD_SCOPE), ("UC-owner", READONLY_SCOPE)):
+        token = Opener({"access_token": "secret", "expires_in": 3600, "scope": scope})
+        api = Opener({"items": [{"id": channel}]})
+        session = UploadConnectionSession(
+            "client", "http://127.0.0.1:8765/", "UC-owner",
+            token_opener=token, api_opener=api,
+        )
+        callback = session.authorization.redirect_uri + "?code=x&state=" + session.authorization.state
+        with pytest.raises(RuntimeError):
+            session.complete(callback)
+        with pytest.raises(RuntimeError, match="consumed"):
+            session.complete(callback)
