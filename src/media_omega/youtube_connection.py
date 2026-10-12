@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .youtube_oauth_readonly import prepare_readonly_authorization
+from .youtube_oauth_readonly import prepare_readonly_authorization, prepare_upload_authorization
 from .youtube_oauth_exchange import SingleUseTokenExchange
 from .youtube_api_readonly import YouTubeReadOnlyAPI
 from .youtube_readback import verify_account
@@ -24,10 +24,14 @@ class ChannelConnectionResult:
 
 class ReadOnlyConnectionSession:
     def __init__(self, client_id: str, redirect_uri: str, expected_channel_id: str,
-                 *, token_opener=None, api_opener=None):
+                 *, token_opener=None, api_opener=None, _mode="READ_ONLY"):
         if not isinstance(expected_channel_id, str) or not expected_channel_id.strip():
             raise ValueError("expected channel ID required")
-        self.authorization = prepare_readonly_authorization(client_id, redirect_uri)
+        if _mode not in ("READ_ONLY", "UPLOAD"):
+            raise ValueError("invalid connection mode")
+        self._mode = _mode
+        prepare = prepare_upload_authorization if _mode == "UPLOAD" else prepare_readonly_authorization
+        self.authorization = prepare(client_id, redirect_uri)
         self._exchange = SingleUseTokenExchange(
             self.authorization, client_id, opener=token_opener,
         )
@@ -47,5 +51,15 @@ class ReadOnlyConnectionSession:
         api = YouTubeReadOnlyAPI(token.access_token, opener=self._api_opener)
         checked = verify_account(api, self._expected)
         if checked.state is not UploadState.NOT_STARTED or checked.channel_id != self._expected:
-            raise RuntimeError("read-only channel identity could not be confirmed")
-        return ChannelConnectionResult(channel_id=checked.channel_id, authorized=True)
+            raise RuntimeError("channel identity could not be confirmed")
+        return ChannelConnectionResult(channel_id=checked.channel_id, authorized=True,
+                                       mode=self._mode)
+
+
+class UploadConnectionSession(ReadOnlyConnectionSession):
+    """One-shot upload-scoped account verification. Never performs an upload."""
+
+    def __init__(self, client_id: str, redirect_uri: str, expected_channel_id: str,
+                 *, token_opener=None, api_opener=None):
+        super().__init__(client_id, redirect_uri, expected_channel_id,
+                         token_opener=token_opener, api_opener=api_opener, _mode="UPLOAD")
