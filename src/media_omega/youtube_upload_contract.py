@@ -90,3 +90,52 @@ def reconcile_upload_outcome(state: UploadState, *, remote_video_id: str | None 
 def may_retry_upload(state: UploadState) -> bool:
     """Conservative safety contract; actual upload capability is absent."""
     return False
+
+
+def verify_private_upload_source(
+    intent: UploadIntent, source_mp4: str, *,
+    confirmed_channel_id: str, rights_confirmed: bool,
+) -> dict:
+    """Local preflight only. Returns verifiable file facts, never upload approval.
+
+    The external publisher must still recheck these facts immediately before
+    contacting YouTube and must use durable single-attempt bookkeeping.
+    """
+    from hashlib import sha256 as file_sha256
+    from pathlib import Path
+    from .media_probe import inspect_video, decode_video
+    from .models import Decision
+
+    if not isinstance(intent, UploadIntent):
+        raise ValueError("canonical upload intent required")
+    if rights_confirmed is not True:
+        raise ValueError("rights confirmation required")
+    if not isinstance(confirmed_channel_id, str) or confirmed_channel_id != intent.channel_id:
+        raise ValueError("verified channel identity mismatch")
+    if intent.visibility != "private":
+        raise ValueError("private visibility required")
+    if not isinstance(source_mp4, str) or not source_mp4.strip():
+        raise ValueError("MP4 file required")
+    file = Path(source_mp4).resolve()
+    if not file.is_file() or file.suffix.lower() != ".mp4":
+        raise ValueError("existing MP4 file required")
+    digest = file_sha256()
+    with file.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    if digest.hexdigest() != intent.asset_sha256:
+        raise ValueError("source media digest does not match upload intent")
+    gate, report = inspect_video(str(file))
+    if gate.decision is not Decision.ACCEPT or not report.get("audio_present"):
+        raise ValueError("media inspection rejected source")
+    checked = decode_video(str(file), timeout=180)
+    if checked.decision is not Decision.ACCEPT:
+        raise ValueError("complete media decode rejected source")
+    return {
+        "path": str(file), "sha256": digest.hexdigest(),
+        "size_bytes": file.stat().st_size,
+        "channel_id": confirmed_channel_id, "visibility": "private",
+        "video_codec": report["video_codec"],
+        "duration_seconds": report["duration_seconds"],
+        "published": False,
+    }
