@@ -101,7 +101,7 @@ def test_upload_scoped_connection_confirms_channel_without_upload():
 
 def test_upload_scoped_wrong_channel_and_scope_are_terminal():
     from media_omega.youtube_connection import UploadConnectionSession
-    from media_omega.youtube_oauth_readonly import UPLOAD_SCOPE
+    from media_omega.youtube_oauth_readonly import UPLOAD_SCOPE, UPLOAD_CONNECTION_SCOPE
     for channel, scope in (("UC-other", UPLOAD_CONNECTION_SCOPE), ("UC-owner", READONLY_SCOPE)):
         token = Opener({"access_token": "secret", "expires_in": 3600, "scope": scope})
         api = Opener({"items": [{"id": channel}]})
