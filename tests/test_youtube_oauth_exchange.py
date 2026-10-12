@@ -125,3 +125,20 @@ def test_upload_exchange_accepts_exact_upload_scope_only():
                     "access_token": "token", "expires_in": 3600, "scope": scope,
                 })
             ).exchange_callback(callback)
+
+
+def test_google_callback_with_trusted_issuer_succeeds():
+    from urllib.parse import quote
+    request, callback = prepared()
+    callback += "&iss=" + quote("https://accounts.google.com", safe="")
+    result = SingleUseTokenExchange(request, "test-client", opener=RecordingOpener()).exchange_callback(callback)
+    assert result.access_token == "fake-token"
+
+
+def test_google_callback_with_untrusted_issuer_fails_before_network():
+    request, callback = prepared()
+    opener = RecordingOpener()
+    exchange = SingleUseTokenExchange(request, "test-client", opener=opener)
+    with pytest.raises(ValueError, match="issuer"):
+        exchange.exchange_callback(callback + "&iss=https%3A%2F%2Fevil.example")
+    assert not opener.calls
