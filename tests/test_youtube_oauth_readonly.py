@@ -43,10 +43,10 @@ def test_missing_client_and_blank_state_fail_closed():
 
 
 def test_upload_pkce_is_explicit_and_separate_from_readonly():
-    from media_omega.youtube_oauth_readonly import UPLOAD_SCOPE, prepare_upload_authorization
+    from media_omega.youtube_oauth_readonly import UPLOAD_CONNECTION_SCOPE, prepare_upload_authorization
     request = prepare_upload_authorization("client", "http://127.0.0.1:8765/")
     params = parse_qs(urlsplit(request.authorization_url).query)
-    assert params["scope"] == [UPLOAD_SCOPE]
+    assert set(params["scope"][0].split()) == set(UPLOAD_CONNECTION_SCOPE.split())
     assert params["code_challenge_method"] == ["S256"]
     assert "code_verifier" not in params
     assert params["state"] == [request.state]
