@@ -71,7 +71,7 @@ def main() -> int:
 
     root = tk.Tk()
     root.title("MEDIA Ω — Video Workshop")
-    root.geometry("920x760")
+    root.geometry("920x840")
     root.minsize(630, 510)
 
     region = tk.StringVar(value="TH")
@@ -92,7 +92,7 @@ def main() -> int:
     work: Queue = Queue()
     active = [False]
 
-    frame = ttk.Frame(root, padding=16)
+    # Status stays visible at the window bottom even when content needs scrolling.\n    status_bar = ttk.Label(root, textvariable=status, padding=(12, 7), wraplength=880)\n    status_bar.pack(side="bottom", fill="x")\n    frame = ttk.Frame(root, padding=16)
     frame.pack(fill="both", expand=True)
     ttk.Label(frame, text="MEDIA Ω — Find & Create", font=("Segoe UI", 17, "bold")).pack(anchor="w")
     ttk.Label(frame, text="Popular videos are references only. Use your own or licensed media for rendering.").pack(anchor="w", pady=(4, 14))
