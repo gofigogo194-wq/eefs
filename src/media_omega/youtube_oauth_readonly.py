@@ -23,6 +23,7 @@ class ReadOnlyOAuthRequest:
     state: str
     code_verifier: str
     redirect_uri: str
+    scope: str = READONLY_SCOPE
 
 
 def prepare_readonly_authorization(client_id: str, redirect_uri: str) -> ReadOnlyOAuthRequest:
@@ -66,7 +67,7 @@ def _prepare_authorization(client_id: str, redirect_uri: str, scope: str) -> Rea
         "code_challenge_method": "S256",
         "state": state,
     }
-    return ReadOnlyOAuthRequest(AUTH_ENDPOINT + "?" + urlencode(params), state, verifier, redirect_uri)
+    return ReadOnlyOAuthRequest(AUTH_ENDPOINT + "?" + urlencode(params), state, verifier, redirect_uri, scope)
 
 
 def validate_callback_state(expected: str, received: str) -> bool:
