@@ -58,9 +58,9 @@ class SingleUseTokenExchange:
         ) or callback.fragment or callback.username or callback.password:
             raise ValueError("OAuth callback origin mismatch")
         params = parse_qs(callback.query, keep_blank_values=True)
-        if not {"code", "state"} <= set(params) or not set(params) <= {"code", "state", "iss"} or any(len(v) != 1 for v in params.values()):
+        if not {"code", "state"} <= set(params) or not set(params) <= {"code", "state", "iss", "scope"} or any(len(v) != 1 for v in params.values()):
             raise ValueError("invalid OAuth callback parameters")
-        if "iss" in params and params["iss"][0] not in ("https://accounts.google.com", "accounts.google.com"):\n            raise ValueError("OAuth issuer mismatch")\n        if not validate_callback_state(self.authorization.state, params["state"][0]):
+        if "iss" in params and params["iss"][0] not in ("https://accounts.google.com", "accounts.google.com"):\n            raise ValueError("OAuth issuer mismatch")\n        if "scope" in params and set(params["scope"][0].split()) != set(self.authorization.scope.split()):\n            raise ValueError("OAuth callback scope mismatch")\n        if not validate_callback_state(self.authorization.state, params["state"][0]):
             raise ValueError("OAuth state mismatch")
         code = params["code"][0]
         if not code or len(code) > 4096:
