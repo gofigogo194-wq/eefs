@@ -6,6 +6,7 @@ No publishing, downloading, credential entry or background persistence.
 from __future__ import annotations
 
 import json
+import webbrowser
 import os
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ from threading import Thread
 
 from .ambient_renderer import render_ambient_loop
 from .youtube_api_readonly import YouTubeReadOnlyAPI
+from .youtube_connection import UploadConnectionSession
 
 
 def find_popular(region: str, count: int, api_key: str = "") -> list[dict]:
@@ -65,16 +67,19 @@ def main() -> int:
         executable_dir = Path(sys.executable).resolve().parent
         os.environ["PATH"] = str(executable_dir) + os.pathsep + os.environ.get("PATH", "")
     import tkinter as tk
-    from tkinter import filedialog, messagebox, ttk
+    from tkinter import filedialog, messagebox, simpledialog, ttk
 
     root = tk.Tk()
     root.title("MEDIA Ω — Video Workshop")
-    root.geometry("800x640")
+    root.geometry("920x760")
     root.minsize(630, 510)
 
     region = tk.StringVar(value="TH")
     count = tk.StringVar(value="10")
     api_key = tk.StringVar()
+    oauth_client = tk.StringVar()
+    channel_id = tk.StringVar()
+    oauth_session = [None]
     topic = tk.StringVar(value="relaxing nature sounds")
     freshness = tk.StringVar(value="Any")
     video = tk.StringVar()
@@ -117,6 +122,19 @@ def main() -> int:
     results = tk.Text(top, height=10, wrap="word", state="disabled")
     results.pack(fill="both", expand=True, pady=(8, 0))
     ttk.Label(top, text="Reuse rights are NOT verified. This list does not download videos.").pack(anchor="w")
+
+    account = ttk.LabelFrame(frame, text="YouTube account (private upload preparation; no upload)", padding=10)
+    account.pack(fill="x", pady=(10, 0))
+    account_row = ttk.Frame(account)
+    account_row.pack(fill="x")
+    ttk.Label(account_row, text="OAuth client ID").pack(side="left")
+    ttk.Entry(account_row, textvariable=oauth_client, width=32).pack(side="left", padx=5)
+    ttk.Label(account_row, text="Expected channel ID").pack(side="left")
+    ttk.Entry(account_row, textvariable=channel_id, width=22).pack(side="left", padx=5)
+    connect_btn = ttk.Button(account, text="1. Open Google authorization")
+    connect_btn.pack(anchor="w", pady=(6, 0))
+    finish_btn = ttk.Button(account, text="2. Verify browser callback URL")
+    finish_btn.pack(anchor="w", pady=(4, 0))
 
     bottom = ttk.LabelFrame(frame, text="2. Create local MP4 from licensed sources", padding=10)
     bottom.pack(fill="x", pady=(12, 0))
@@ -218,9 +236,39 @@ def main() -> int:
         args = (video.get(), audio.get(), output.get(), seconds, bool(rights.get()), loop)
         run_task(lambda: create_local_video(*args), show_render)
 
+    def start_google_connection():
+        try:
+            session = UploadConnectionSession(
+                oauth_client.get().strip(), "http://127.0.0.1:8765/",
+                channel_id.get().strip(),
+            )
+            oauth_session[0] = session
+            webbrowser.open(session.authorization_url)
+            status.set("Google opened. After consent copy browser callback URL and click Verify.")
+        except (ValueError, RuntimeError):
+            status.set("Google connection setup failed. Check client ID and channel ID.")
+
+    def finish_google_connection():
+        session = oauth_session[0]
+        if session is None:
+            status.set("First open Google authorization")
+            return
+        callback = simpledialog.askstring(
+            "YouTube OAuth", "Paste the full localhost callback URL from your browser:",
+            parent=root,
+        )
+        if not callback:
+            return
+        oauth_session[0] = None
+        def connected(result):
+            status.set("Verified channel " + result.channel_id + " (upload scope). No upload performed.")
+        run_task(lambda: session.complete(callback), connected)
+
     search_btn.configure(command=start_find)
     topic_btn.configure(command=start_topic)
     render_btn.configure(command=start_render)
+    connect_btn.configure(command=start_google_connection)
+    finish_btn.configure(command=finish_google_connection)
 
     def poll():
         try:
