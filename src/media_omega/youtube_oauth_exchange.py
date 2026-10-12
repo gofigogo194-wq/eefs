@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlsplit, urlencode
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
 
-from .youtube_oauth_readonly import ReadOnlyOAuthRequest, READONLY_SCOPE, validate_callback_state
+from .youtube_oauth_readonly import ReadOnlyOAuthRequest, READONLY_SCOPE, UPLOAD_SCOPE, validate_callback_state
 
 
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
@@ -36,6 +36,8 @@ class SingleUseTokenExchange:
             raise ValueError("OAuth authorization required")
         if not isinstance(client_id, str) or not client_id.strip():
             raise ValueError("OAuth client ID required")
+        if authorization.scope not in (READONLY_SCOPE, UPLOAD_SCOPE):
+            raise ValueError("unsupported authorization scope")
         self.authorization = authorization
         self.client_id = client_id
         self.used = False
@@ -94,6 +96,6 @@ class SingleUseTokenExchange:
             raise RuntimeError("OAuth access token missing")
         if isinstance(expires, bool) or not isinstance(expires, int) or not 0 < expires <= 86400:
             raise RuntimeError("invalid token lifetime")
-        if not isinstance(scopes, str) or set(scopes.split()) != {READONLY_SCOPE}:
+        if not isinstance(scopes, str) or set(scopes.split()) != {self.authorization.scope}:
             raise RuntimeError("unexpected OAuth scopes")
         return ReadOnlyToken(token, expires, scopes)
