@@ -142,3 +142,15 @@ def test_google_callback_with_untrusted_issuer_fails_before_network():
     with pytest.raises(ValueError, match="issuer"):
         exchange.exchange_callback(callback + "&iss=https%3A%2F%2Fevil.example")
     assert not opener.calls
+
+
+def test_google_callback_scope_parameter_must_match_requested_permissions():
+    from urllib.parse import urlencode
+    request, callback = prepared()
+    correct = callback + "&" + urlencode({"scope": READONLY_SCOPE, "iss": "https://accounts.google.com"})
+    assert SingleUseTokenExchange(request, "test-client", opener=RecordingOpener()).exchange_callback(correct).scope == READONLY_SCOPE
+    opener = RecordingOpener()
+    exchange = SingleUseTokenExchange(request, "test-client", opener=opener)
+    with pytest.raises(ValueError, match="callback scope"):
+        exchange.exchange_callback(callback + "&" + urlencode({"scope": "https://evil.example/scope"}))
+    assert not opener.calls
