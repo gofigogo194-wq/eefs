@@ -71,3 +71,52 @@ def test_binding_changes_with_channel_or_asset():
     c = prepare_upload_intent(schedule(), channel_id="UC-a",
                               expected_channel_id="UC-a", asset_sha256="b" * 64)
     assert len({a.identity_key, b.identity_key, c.identity_key}) == 3
+
+
+def test_private_preflight_rejects_wrong_channel_rights_and_digest(tmp_path):
+    from media_omega.youtube_upload_contract import verify_private_upload_source
+    from hashlib import sha256
+    video = tmp_path / "sample.mp4"
+    video.write_bytes(b"fixture")
+    intent = prepare_upload_intent(
+        schedule(), channel_id="UC-owner",
+        expected_channel_id="UC-owner",
+        asset_sha256=sha256(b"fixture").hexdigest(),
+    )
+    with pytest.raises(ValueError, match="rights"):
+        verify_private_upload_source(intent, str(video), confirmed_channel_id="UC-owner",
+                                     rights_confirmed=False)
+    with pytest.raises(ValueError, match="channel"):
+        verify_private_upload_source(intent, str(video), confirmed_channel_id="UC-foreign",
+                                     rights_confirmed=True)
+    video.write_bytes(b"mutated")
+    with pytest.raises(ValueError, match="digest"):
+        verify_private_upload_source(intent, str(video), confirmed_channel_id="UC-owner",
+                                     rights_confirmed=True)
+
+
+def test_private_preflight_inspects_actual_file_without_upload(tmp_path, monkeypatch):
+    from hashlib import sha256
+    from media_omega import media_probe
+    from media_omega.youtube_upload_contract import verify_private_upload_source
+    from media_omega.models import Decision, GateResult
+    video = tmp_path / "sample.mp4"
+    video.write_bytes(b"video-sample")
+    intent = prepare_upload_intent(
+        schedule(), channel_id="UC-owner", expected_channel_id="UC-owner",
+        asset_sha256=sha256(video.read_bytes()).hexdigest(),
+    )
+    monkeypatch.setattr(media_probe, "inspect_video", lambda path: (
+        GateResult(Decision.ACCEPT, ("OK",)),
+        {"audio_present": True, "duration_seconds": 60, "video_codec": "h264"},
+    ))
+    monkeypatch.setattr(media_probe, "decode_video", lambda path, timeout: (
+        GateResult(Decision.ACCEPT, ("OK",))
+    ))
+    facts = verify_private_upload_source(
+        intent, str(video), confirmed_channel_id="UC-owner", rights_confirmed=True,
+    )
+    assert facts["published"] is False
+    assert facts["visibility"] == "private"
+    assert facts["channel_id"] == "UC-owner"
+    assert facts["size_bytes"] == len(b"video-sample")
