@@ -15,6 +15,7 @@ from urllib.parse import urlencode
 AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 READONLY_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
 UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
+UPLOAD_CONNECTION_SCOPE = READONLY_SCOPE + " " + UPLOAD_SCOPE
 
 
 @dataclass(frozen=True)
@@ -33,11 +34,11 @@ def prepare_readonly_authorization(client_id: str, redirect_uri: str) -> ReadOnl
 
 def prepare_upload_authorization(client_id: str, redirect_uri: str) -> ReadOnlyOAuthRequest:
     """Prepare an opt-in upload-scoped OAuth login; NO token exchange or upload."""
-    return _prepare_authorization(client_id, redirect_uri, UPLOAD_SCOPE)
+    return _prepare_authorization(client_id, redirect_uri, UPLOAD_CONNECTION_SCOPE)
 
 
 def _prepare_authorization(client_id: str, redirect_uri: str, scope: str) -> ReadOnlyOAuthRequest:
-    if scope not in (READONLY_SCOPE, UPLOAD_SCOPE):
+    if scope not in (READONLY_SCOPE, UPLOAD_CONNECTION_SCOPE):
         raise ValueError("unsupported OAuth scope")
     if not isinstance(client_id, str) or not client_id.strip():
         raise ValueError("OAuth client ID required")
