@@ -40,3 +40,23 @@ def test_missing_client_and_blank_state_fail_closed():
     with pytest.raises(ValueError):
         prepare_readonly_authorization("", "http://localhost:8000/")
     assert not validate_callback_state("", "")
+
+
+def test_upload_pkce_is_explicit_and_separate_from_readonly():
+    from media_omega.youtube_oauth_readonly import UPLOAD_SCOPE, prepare_upload_authorization
+    request = prepare_upload_authorization("client", "http://127.0.0.1:8765/")
+    params = parse_qs(urlsplit(request.authorization_url).query)
+    assert params["scope"] == [UPLOAD_SCOPE]
+    assert params["code_challenge_method"] == ["S256"]
+    assert "code_verifier" not in params
+    assert params["state"] == [request.state]
+    readonly = prepare_readonly_authorization("client", "http://127.0.0.1:8765/")
+    assert parse_qs(urlsplit(readonly.authorization_url).query)["scope"] == [READONLY_SCOPE]
+
+
+def test_upload_oauth_keeps_loopback_and_client_validations():
+    from media_omega.youtube_oauth_readonly import prepare_upload_authorization
+    with pytest.raises(ValueError):
+        prepare_upload_authorization("client", "https://malicious.example/callback")
+    with pytest.raises(ValueError):
+        prepare_upload_authorization("", "http://127.0.0.1:8765/")
