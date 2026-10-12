@@ -106,16 +106,16 @@ def test_broad_scope_and_incomplete_token_are_rejected():
 
 
 def test_upload_exchange_accepts_exact_upload_scope_only():
-    from media_omega.youtube_oauth_readonly import UPLOAD_SCOPE, prepare_upload_authorization
+    from media_omega.youtube_oauth_readonly import UPLOAD_SCOPE, UPLOAD_CONNECTION_SCOPE, prepare_upload_authorization
     request = prepare_upload_authorization("test-client", "http://127.0.0.1:8765/")
     callback = request.redirect_uri + "?code=abc&state=" + request.state
     response = RecordingOpener(payload={
-        "access_token": "fake-upload-token", "expires_in": 3600, "scope": UPLOAD_SCOPE,
+        "access_token": "fake-upload-token", "expires_in": 3600, "scope": UPLOAD_CONNECTION_SCOPE,
     })
     token = SingleUseTokenExchange(request, "test-client", opener=response).exchange_callback(callback)
-    assert token.scope == UPLOAD_SCOPE
+    assert set(token.scope.split()) == set(UPLOAD_CONNECTION_SCOPE.split())
 
-    for scope in (READONLY_SCOPE, READONLY_SCOPE + " " + UPLOAD_SCOPE, "other"):
+    for scope in (READONLY_SCOPE, UPLOAD_SCOPE, "other"):
         request = prepare_upload_authorization("test-client", "http://127.0.0.1:8765/")
         callback = request.redirect_uri + "?code=abc&state=" + request.state
         with pytest.raises(RuntimeError, match="scope"):
