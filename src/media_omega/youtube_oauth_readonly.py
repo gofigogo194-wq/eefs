@@ -14,6 +14,7 @@ from urllib.parse import urlencode
 
 AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 READONLY_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
+UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,18 @@ class ReadOnlyOAuthRequest:
 
 
 def prepare_readonly_authorization(client_id: str, redirect_uri: str) -> ReadOnlyOAuthRequest:
+    """Prepare a read-only OAuth login; unchanged existing permission."""
+    return _prepare_authorization(client_id, redirect_uri, READONLY_SCOPE)
+
+
+def prepare_upload_authorization(client_id: str, redirect_uri: str) -> ReadOnlyOAuthRequest:
+    """Prepare an opt-in upload-scoped OAuth login; NO token exchange or upload."""
+    return _prepare_authorization(client_id, redirect_uri, UPLOAD_SCOPE)
+
+
+def _prepare_authorization(client_id: str, redirect_uri: str, scope: str) -> ReadOnlyOAuthRequest:
+    if scope not in (READONLY_SCOPE, UPLOAD_SCOPE):
+        raise ValueError("unsupported OAuth scope")
     if not isinstance(client_id, str) or not client_id.strip():
         raise ValueError("OAuth client ID required")
     # Loopback browser callback for a desktop app; never accept arbitrary
@@ -47,7 +60,7 @@ def prepare_readonly_authorization(client_id: str, redirect_uri: str) -> ReadOnl
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": READONLY_SCOPE,
+        "scope": scope,
         "access_type": "offline",
         "code_challenge": challenge,
         "code_challenge_method": "S256",
