@@ -1,10 +1,16 @@
 name: Candidate CI
 
 on:
-  pull_request:
   push:
     branches:
       - "candidate/**"
+  workflow_dispatch:
+
+# Only the final Candidate HEAD needs a complete build; never cancel a
+# running build unless a newer commit supersedes its source tree.
+concurrency:
+  group: media-omega-candidate-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -54,9 +60,17 @@ jobs:
       - name: Install FFmpeg for real Windows video integration
         shell: pwsh
         run: |
-          choco install ffmpeg --yes --no-progress
+          $installed = $false
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            choco install ffmpeg --yes --no-progress
+            if ($LASTEXITCODE -eq 0) { $installed = $true; break }
+            Start-Sleep -Seconds (10 * $attempt)
+          }
+          if (-not $installed) { throw "FFmpeg installation unavailable after bounded retries" }
           ffmpeg -version
+          if ($LASTEXITCODE -ne 0) { throw "FFmpeg executable check failed" }
           ffprobe -version
+          if ($LASTEXITCODE -ne 0) { throw "FFprobe executable check failed" }
       - name: Verify Windows desktop Tkinter bootstrap without GUI display
         shell: pwsh
         run: |
