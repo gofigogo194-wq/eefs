@@ -51,7 +51,7 @@ class ReadOnlyConnectionSession:
         api = YouTubeReadOnlyAPI(token.access_token, opener=self._api_opener)
         checked = verify_account(api, self._expected)
         if checked.state is not UploadState.NOT_STARTED or checked.channel_id != self._expected:
-            raise RuntimeError("channel identity could not be confirmed")
+            raise RuntimeError("channel verification failed: " + checked.reason)
         return ChannelConnectionResult(channel_id=checked.channel_id, authorized=True,
                                        mode=self._mode)
 
