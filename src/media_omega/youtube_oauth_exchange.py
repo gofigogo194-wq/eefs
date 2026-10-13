@@ -85,8 +85,23 @@ class SingleUseTokenExchange:
                 raw = response.read(64 * 1024 + 1)
                 if len(raw) > 64 * 1024:
                     raise RuntimeError("OAuth token response too large")
-        except (HTTPError, URLError, OSError, TimeoutError):
-            raise RuntimeError("OAuth exchange failed or outcome uncertain") from None
+        except HTTPError as exc:
+            # Never expose Google's raw body: it may carry sensitive context.
+            reason = "UNKNOWN"
+            try:
+                raw_error = exc.read(8192)
+                response_error = json.loads(raw_error)
+                candidate = response_error.get("error") if isinstance(response_error, dict) else None
+                if candidate in {
+                    "invalid_client", "invalid_grant", "invalid_request",
+                    "unauthorized_client", "access_denied", "unsupported_grant_type",
+                }:
+                    reason = candidate.upper()
+            except (ValueError, OSError, UnicodeError):
+                pass
+            raise RuntimeError(f"Google token exchange rejected: HTTP {exc.code} / {reason}") from None
+        except (URLError, OSError, TimeoutError):
+            raise RuntimeError("Google token endpoint unreachable or timed out") from None
         try:
             payload = json.loads(raw)
         except (ValueError, UnicodeError):
