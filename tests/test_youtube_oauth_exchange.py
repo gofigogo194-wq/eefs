@@ -154,3 +154,20 @@ def test_google_callback_scope_parameter_must_match_requested_permissions():
     with pytest.raises(ValueError, match="callback scope"):
         exchange.exchange_callback(callback + "&" + urlencode({"scope": "https://evil.example/scope"}))
     assert not opener.calls
+
+
+def test_token_endpoint_rejection_reports_safe_known_code():
+    from urllib.error import HTTPError
+    class Rejecting:
+        def open(self, request, timeout):
+            from io import BytesIO
+            return self.fail(request)
+        def fail(self, request):
+            raise HTTPError(
+                TOKEN_ENDPOINT, 400, "bad request", {},
+                BytesIO(b'{"error":"invalid_client","error_description":"secret must not leak"}'),
+            )
+    request, callback = prepared()
+    with pytest.raises(RuntimeError, match="HTTP 400 / INVALID_CLIENT") as err:
+        SingleUseTokenExchange(request, "test-client", opener=Rejecting()).exchange_callback(callback)
+    assert "secret must not leak" not in str(err.value)
