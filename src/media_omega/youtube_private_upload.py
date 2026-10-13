@@ -218,3 +218,48 @@ class PrivateUpload:
         except Exception:
             # No tokens, session URLs, or server bodies leak into the UI.
             raise RuntimeError("YouTube upload outcome unknown; do not retry automatically") from None
+
+
+    def reconcile_existing(self, path: str, *, access_token: str, channel_id: str) -> dict:
+        """READ ONLY: recheck an existing attempt after an uncertain outcome/restart.
+
+        This method has no POST/PUT capability and never starts another upload.
+        The same local bytes and original channel must identify the marker.
+        """
+        if not all(isinstance(value, str) and value.strip()
+                   for value in (path, access_token, channel_id)):
+            raise ValueError("file, token and channel ID required")
+        file = Path(path).resolve(strict=True)
+        if not file.is_file() or file.suffix.lower() != ".mp4":
+            raise ValueError("existing MP4 required for readback")
+        digest = self._digest_file(file)
+        job = sha256((channel_id + "\0" + digest).encode("utf-8")).hexdigest()
+        marker = self.state_dir / (job + ".json")
+        try:
+            record = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raise ValueError("No previous upload attempt found for this MP4 and channel") from None
+        if (not isinstance(record, dict) or record.get("channel_id") != channel_id
+                or record.get("sha256") != digest
+                or record.get("size_bytes") != file.stat().st_size
+                or record.get("state") not in ("REMOTE_UNKNOWN", "REMOTE_CONFIRMED_PRIVATE")):
+            raise ValueError("upload marker binding invalid")
+        video_id = record.get("video_id")
+        if not isinstance(video_id, str) or not video_id:
+            return {"state": "REMOTE_UNKNOWN", "video_id": "",
+                    "reason": "No remote video ID recorded; investigate in YouTube Studio. Do not retry."}
+        try:
+            api = YouTubeReadOnlyAPI(access_token, opener=self.opener)
+            self._remote_channel_check(api, channel_id)
+            video = api.get_video(video_id)
+        except Exception:
+            raise RuntimeError("YouTube readback failed; do not retry upload") from None
+        if (not isinstance(video, dict) or video.get("id") != video_id
+                or video.get("channel_id") != channel_id
+                or video.get("privacy_status") != "private"):
+            raise RuntimeError("Private readback inconclusive; do not retry upload")
+        record["state"] = "REMOTE_CONFIRMED_PRIVATE"
+        self._store_marker(marker, record)
+        return {"video_id": video_id, "state": "REMOTE_CONFIRMED_PRIVATE",
+                "url": "https://www.youtube.com/watch?v=" + video_id,
+                "channel_id": channel_id}
