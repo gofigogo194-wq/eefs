@@ -193,7 +193,7 @@ def main() -> int:
                 }
                 if isinstance(exc, ValueError):
                     message = str(exc)
-                elif isinstance(exc, RuntimeError) and str(exc) in oauth_safe_errors:
+                elif isinstance(exc, RuntimeError) and (str(exc) in oauth_safe_errors or str(exc).startswith("Google token exchange rejected: HTTP ") or str(exc) == "Google token endpoint unreachable or timed out"):
                     message = str(exc)
                 else:
                     message = "API or media operation failed (" + type(exc).__name__ + ")"
