@@ -81,7 +81,6 @@ class YouTubeReadOnlyAPI:
             raise ValueError("video ID required")
         data = self._get("videos", {
             "part": "snippet,status", "id": video_id,
-            "maxResults": 1,
         })
         items = data.get("items")
         if not isinstance(items, list) or len(items) > 1:
