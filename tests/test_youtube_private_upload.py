@@ -3,6 +3,16 @@ from io import BytesIO
 import pytest
 
 from media_omega.youtube_private_upload import PrivateUpload
+from media_omega.models import Decision, GateResult
+
+
+@pytest.fixture(autouse=True)
+def verified_media(monkeypatch):
+    from media_omega import media_probe
+    monkeypatch.setattr(media_probe, "inspect_video", lambda path: (
+        GateResult(Decision.ACCEPT, ("OK",)), {"audio_present": True}))
+    monkeypatch.setattr(media_probe, "decode_video", lambda path, timeout: (
+        GateResult(Decision.ACCEPT, ("OK",))))
 
 
 class Reply:
