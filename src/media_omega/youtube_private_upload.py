@@ -37,6 +37,8 @@ class PrivateUpload:
         file = Path(path).resolve(strict=True)
         if file.suffix.lower() != ".mp4" or not file.is_file() or file.stat().st_size <= 0:
             raise ValueError("valid MP4 file required")
+        if file.stat().st_size > 100 * 1024 * 1024:
+            raise ValueError("pilot upload limited to 100 MiB; no network attempt")
         if len(title) > 100 or len(description) > 5000:
             raise ValueError("YouTube metadata exceeds maximum length")
         checked = preflight(str(file))
