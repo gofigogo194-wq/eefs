@@ -86,7 +86,7 @@ def test_wrong_callback_host_fails_before_network():
 def test_error_is_nonretryable():
     request, callback = prepared()
     exchange = SingleUseTokenExchange(request, "test-client", opener=RecordingOpener(error=True))
-    with pytest.raises(RuntimeError, match="uncertain"):
+    with pytest.raises(RuntimeError, match="token endpoint unreachable or timed out"):
         exchange.exchange_callback(callback)
     with pytest.raises(RuntimeError, match="already attempted"):
         exchange.exchange_callback(callback)
