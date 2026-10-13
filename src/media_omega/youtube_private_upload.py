@@ -44,6 +44,16 @@ class PrivateUpload:
         checked = preflight(str(file))
         if checked is not True:
             raise ValueError("MP4 preflight did not pass")
+        # Even callers that claim preflight succeeded cannot bypass the built-in
+        # full decode. Failure blocks before creation of any upload intent.
+        from .media_probe import inspect_video, decode_video
+        from .models import Decision
+        gate, report = inspect_video(str(file))
+        if gate.decision is not Decision.ACCEPT or not report.get("audio_present"):
+            raise ValueError("MP4 inspection rejected source")
+        verified = decode_video(str(file), timeout=180)
+        if verified.decision is not Decision.ACCEPT:
+            raise ValueError("MP4 full decode rejected source")
         original = file.read_bytes()
         digest = sha256(original).hexdigest()
         job = sha256((channel_id + "\0" + digest).encode()).hexdigest()
