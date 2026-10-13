@@ -1,7 +1,7 @@
-"""Minimal desktop UI for popular-video discovery and licensed local MP4 rendering.
+"""Windows desktop: YouTube discovery, licensed MP4 creation and opt-in PRIVATE upload.
 
 Run: python -m media_omega.desktop
-No publishing, downloading, credential entry or background persistence.
+No public publishing, downloading others' videos or persistent credentials.
 """
 from __future__ import annotations
 
@@ -94,7 +94,7 @@ def main() -> int:
     duration = tk.StringVar(value="60")
     loop_seconds = tk.StringVar(value="5")
     rights = tk.BooleanVar(value=False)
-    status = tk.StringVar(value="Ready. No uploads are enabled.")
+    status = tk.StringVar(value="Ready. PRIVATE upload is manual only.")
     work: Queue = Queue()
     active = [False]
 
@@ -193,6 +193,8 @@ def main() -> int:
         side="left", fill="x", expand=True, padx=6)
     upload_btn = ttk.Button(upload_area, text="Upload PRIVATE once (no automatic retry)")
     upload_btn.pack(anchor="w", pady=(6, 0))
+    check_btn = ttk.Button(upload_area, text="Check previous upload (read only)")
+    check_btn.pack(anchor="w", pady=(4, 0))
 
     ttk.Label(frame, textvariable=status, wraplength=740).pack(anchor="w", pady=(12, 0))
     ttk.Label(frame, text="Manual PRIVATE upload only. Public publication is disabled.", foreground="#666").pack(anchor="w")
@@ -205,6 +207,7 @@ def main() -> int:
         topic_btn.configure(state="disabled")
         render_btn.configure(state="disabled")
         upload_btn.configure(state="disabled")
+        check_btn.configure(state="disabled")
         status.set("Working...")
 
         def worker():
@@ -225,6 +228,8 @@ def main() -> int:
                     "channel verification failed: AUTHENTICATED_CHANNEL_MISMATCH",
                     "Upload already attempted: manual reconciliation required",
                     "YouTube upload outcome unknown; do not retry automatically",
+                    "YouTube readback failed; do not retry upload",
+                    "Private readback inconclusive; do not retry upload",
                 }
                 if isinstance(exc, ValueError):
                     message = str(exc)
@@ -348,12 +353,31 @@ def main() -> int:
             preflight=lambda path: True,
         ), upload_done)
 
+    def check_existing_private_upload():
+        account = verified_account[0]
+        if account is None or not account.authorized or account.mode != "UPLOAD":
+            status.set("Connect and verify the YouTube channel first")
+            return
+        file_path = upload_file.get().strip()
+        def checked(result):
+            if result["state"] == "REMOTE_CONFIRMED_PRIVATE":
+                status.set("Private YouTube video confirmed: " + result["url"])
+                messagebox.showinfo("MEDIA Ω", "PRIVATE confirmed: " + result["url"])
+            else:
+                status.set(result["reason"])
+                messagebox.showwarning("MEDIA Ω — check only", result["reason"])
+        verifier = PrivateUpload(str(Path.home() / ".media_omega" / "upload_attempts"))
+        run_task(lambda: verifier.reconcile_existing(
+            file_path, access_token=account.access_token, channel_id=account.channel_id,
+        ), checked)
+
     search_btn.configure(command=start_find)
     topic_btn.configure(command=start_topic)
     render_btn.configure(command=start_render)
     connect_btn.configure(command=start_google_connection)
     finish_btn.configure(command=finish_google_connection)
     upload_btn.configure(command=start_private_upload)
+    check_btn.configure(command=check_existing_private_upload)
 
     def poll():
         try:
@@ -366,6 +390,7 @@ def main() -> int:
             topic_btn.configure(state="normal")
             render_btn.configure(state="normal")
             upload_btn.configure(state="normal")
+            check_btn.configure(state="normal")
             if error:
                 status.set("Operation failed: " + error)
             else:
