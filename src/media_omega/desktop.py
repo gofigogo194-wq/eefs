@@ -85,6 +85,7 @@ def main() -> int:
     verified_account = [None]
     upload_file = tk.StringVar()
     upload_title = tk.StringVar(value="Relaxing Nature Sounds — Private Test")
+    upload_description = tk.StringVar(value="Private pilot upload — RELAX SABAI MUSIK")
     topic = tk.StringVar(value="relaxing nature sounds")
     freshness = tk.StringVar(value="Any")
     video = tk.StringVar()
@@ -131,7 +132,7 @@ def main() -> int:
     results.pack(fill="both", expand=True, pady=(8, 0))
     ttk.Label(top, text="Reuse rights are NOT verified. This list does not download videos.").pack(anchor="w")
 
-    account = ttk.LabelFrame(frame, text="YouTube account (private upload preparation; no upload)", padding=10)
+    account = ttk.LabelFrame(frame, text="YouTube account — verify before private upload", padding=10)
     account.pack(fill="x", pady=(10, 0))
     account_row = ttk.Frame(account)
     account_row.pack(fill="x")
@@ -185,11 +186,16 @@ def main() -> int:
     title_line.pack(fill="x", pady=(6, 0))
     ttk.Label(title_line, text="Video title").pack(side="left")
     ttk.Entry(title_line, textvariable=upload_title).pack(side="left", fill="x", expand=True, padx=6)
+    description_line = ttk.Frame(upload_area)
+    description_line.pack(fill="x", pady=(6, 0))
+    ttk.Label(description_line, text="Description").pack(side="left")
+    ttk.Entry(description_line, textvariable=upload_description).pack(
+        side="left", fill="x", expand=True, padx=6)
     upload_btn = ttk.Button(upload_area, text="Upload PRIVATE once (no automatic retry)")
     upload_btn.pack(anchor="w", pady=(6, 0))
 
     ttk.Label(frame, textvariable=status, wraplength=740).pack(anchor="w", pady=(12, 0))
-    ttk.Label(frame, text="Local draft only. No upload or publication.", foreground="#666").pack(anchor="w")
+    ttk.Label(frame, text="Manual PRIVATE upload only. Public publication is disabled.", foreground="#666").pack(anchor="w")
 
     def run_task(task, success):
         if active[0]:
@@ -217,6 +223,8 @@ def main() -> int:
                     "channel verification failed: EXPECTED_CHANNEL_REQUIRED",
                     "channel verification failed: AUTHENTICATED_CHANNEL_READ_FAILED",
                     "channel verification failed: AUTHENTICATED_CHANNEL_MISMATCH",
+                    "Upload already attempted: manual reconciliation required",
+                    "YouTube upload outcome unknown; do not retry automatically",
                 }
                 if isinstance(exc, ValueError):
                     message = str(exc)
@@ -322,19 +330,21 @@ def main() -> int:
             return
         if not messagebox.askyesno(
             "MEDIA Ω — PRIVATE upload",
-            "Send ONE video to the verified channel as PRIVATE?\\n"
-            "An uncertain result blocks retries to avoid duplicates.\\n"
+            "Send ONE video to the verified channel as PRIVATE?\n"
+            "An uncertain result blocks retries to avoid duplicates.\n"
             "No public publication will occur.",
         ):
             return
         def upload_done(result):
-            status.set("PRIVATE upload response: " + result["video_id"] +
-                       "; readback pending, do not retry.")
-            messagebox.showinfo("MEDIA Ω", "Private upload response received. Verify the video in YouTube Studio.")
+            status.set("PRIVATE upload verified through YouTube API: " + result["url"])
+            messagebox.showinfo("MEDIA Ω — Private verified",
+                                "Uploaded PRIVATE and confirmed for your channel:\n" +
+                                result["url"])
         publisher = PrivateUpload(str(Path.home() / ".media_omega" / "upload_attempts"))
         run_task(lambda: publisher.upload_once(
             file_path, access_token=account.access_token, channel_id=account.channel_id,
-            title=title_value, rights_confirmed=bool(rights.get()),
+            title=title_value, description=upload_description.get(),
+            rights_confirmed=bool(rights.get()),
             preflight=lambda path: True,
         ), upload_done)
 
