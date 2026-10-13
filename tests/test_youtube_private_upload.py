@@ -219,3 +219,48 @@ def test_bad_308_range_refuses_retry_or_new_session(tmp_path):
                            title="Test", rights_confirmed=True, preflight=lambda path: True)
     assert [r.get_method() for r in opener.calls] == ["GET", "POST", "PUT"]
     assert marker(state)["state"] == "REMOTE_UNKNOWN"
+
+
+
+def test_explicit_read_only_reconciliation_survives_restart(tmp_path):
+    media = tmp_path / "original.mp4"
+    media.write_bytes(b"licensed fixture")
+    state = tmp_path / "attempts"
+    with pytest.raises(RuntimeError, match="outcome unknown"):
+        upload(media, state, Opener(readback_private=False))
+    assert marker(state)["video_id"] == VIDEO_ID
+    check_transport = Opener()
+    result = PrivateUpload(str(state), opener=check_transport).reconcile_existing(
+        str(media), access_token="fresh-token", channel_id=CHANNEL)
+    assert result["state"] == "REMOTE_CONFIRMED_PRIVATE"
+    assert marker(state)["state"] == "REMOTE_CONFIRMED_PRIVATE"
+    assert [request.get_method() for request in check_transport.calls] == ["GET", "GET"]
+    with pytest.raises(RuntimeError, match="already attempted"):
+        upload(media, state, Opener())
+
+
+def test_missing_video_id_is_unknown_and_no_new_remote_write(tmp_path):
+    media = tmp_path / "original.mp4"
+    media.write_bytes(b"licensed fixture")
+    state = tmp_path / "attempts"
+    with pytest.raises(RuntimeError, match="outcome unknown"):
+        upload(media, state, Opener(fail_post=True))
+    verifier = Opener()
+    result = PrivateUpload(str(state), opener=verifier).reconcile_existing(
+        str(media), access_token="fresh-token", channel_id=CHANNEL)
+    assert result["state"] == "REMOTE_UNKNOWN"
+    assert not verifier.calls
+    assert marker(state)["video_id"] == ""
+
+
+def test_changed_file_cannot_reconcile_another_upload(tmp_path):
+    media = tmp_path / "original.mp4"
+    media.write_bytes(b"licensed fixture")
+    state = tmp_path / "attempts"
+    upload(media, state, Opener())
+    media.write_bytes(b"changed")
+    verifier = Opener()
+    with pytest.raises(ValueError, match="No previous upload attempt"):
+        PrivateUpload(str(state), opener=verifier).reconcile_existing(
+            str(media), access_token="fresh-token", channel_id=CHANNEL)
+    assert not verifier.calls
