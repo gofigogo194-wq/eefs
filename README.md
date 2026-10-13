@@ -38,7 +38,7 @@ The former duplicate intelligence/scoring, scout, baseline-collection, momentum-
 
 Candidate CI currently gates Python 3.11–3.14 on Linux and Python 3.14 on Windows with pinned pytest.
 
-Planning, creation, and verification are intentionally linear: one selected opportunity admits one exact plan, one creator adapter may produce one manifest for that plan using the plan id as the idempotency key, and one verification gate may promote that exact manifest to VERIFIED. A failed plan check does not permanently kill the opportunity. The deterministic creator used by CI writes real files so MEDIA Ω can independently compute and later re-check their SHA256 and byte size. Verification proves file integrity, binding, declared media type, and provenance; it does not claim independent copyright/originality certainty. No production creator or publisher exists yet, and no autonomous public-publishing claim is made.
+Planning, creation, and verification are intentionally linear: one selected opportunity admits one exact plan, one creator adapter may produce one manifest for that plan using the plan id as the idempotency key, and one verification gate may promote that exact manifest to VERIFIED. A failed plan check does not permanently kill the opportunity. The deterministic creator used by CI writes real files so MEDIA Ω can independently compute and later re-check their SHA256 and byte size. Verification proves file integrity, binding, declared media type, and provenance; it does not claim independent copyright/originality certainty. A manual, one-shot PRIVATE-only YouTube uploader now exists in Candidate. No autonomous or public publisher exists, and no public-publishing claim is made.
 
 ## Open-source reconnaissance
 
@@ -68,6 +68,39 @@ parameter to Google's API. Avoid sharing diagnostic URLs containing credentials.
 For automated setups the `MEDIA_OMEGA_YOUTUBE_API_KEY` environment variable
 is also supported. Existing session OAuth bearer tokens via
 `MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN` still work and take precedence. No YouTube
-upload, OAuth sign-in, download or public publication is implemented in this desktop.
-CI tests mock API responses: **a live account/API-key search on the user's Windows
-machine is still a separate acceptance test**.
+automatic upload, downloading third-party videos or public publication is implemented.
+OAuth channel verification and a separate one-shot PRIVATE upload require explicit
+operator action. CI tests mock API responses: **a live channel upload on Windows
+is still a separate acceptance test**.
+
+
+## First PRIVATE upload on Windows (Candidate only)
+
+The only complete Windows package is built by the **Candidate CI** workflow,
+whose Windows job runs the test suite and bundles real ffmpeg.exe/ffprobe.exe:
+https://github.com/gofigogo194-wq/eefs/actions/workflows/ci.yml
+Use the newest successful run on branch `candidate/media-omega-v0.1-core`,
+open **Artifacts → MEDIA_OMEGA_WINDOWS_CANDIDATE**, extract the downloaded
+GitHub artifact ZIP and then extract its inner MEDIA_OMEGA_WINDOWS_CANDIDATE.zip
+to a **new folder**. Run MEDIA_OMEGA.exe from that folder.
+
+1. Use the existing Desktop OAuth Client ID and Client Secret, enter the
+   intended YouTube Channel ID, authorize, then verify the callback URL.
+   Tokens are never persisted.
+2. Select a short licensed/original MP4 with audio **no larger than 100 MiB**.
+   Set its title and description and confirm rights to both video and music.
+3. Confirm the one-shot **Upload PRIVATE** prompt. MEDIA Ω verifies the complete
+   MP4, checks the authorized channel, stores a durable attempt marker before
+   network writes, uploads in bounded-memory chunks, then reads the private
+   video back with the same authorized YouTube account.
+4. Only a confirmed PRIVATE response produces a video URL. An uncertain or
+   interrupted attempt is locked; **do not press Upload again** to work
+   around an error.
+5. Reconnect the same account and use **Check previous upload (read only)**
+   to recheck a recorded video ID after a restart. It never performs an
+   upload. If the remote ID is unknown or readback remains inconclusive,
+   investigate the private uploads in YouTube Studio and do not reupload.
+
+This is not public or scheduled publishing. A successful CI package alone
+does not prove account-level acceptance: the first real PRIVATE test on the
+owner's Windows machine is the final gate before claiming upload support.
