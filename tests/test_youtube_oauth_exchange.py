@@ -171,3 +171,16 @@ def test_token_endpoint_rejection_reports_safe_known_code():
     with pytest.raises(RuntimeError, match="HTTP 400 / INVALID_CLIENT") as err:
         SingleUseTokenExchange(request, "test-client", opener=Rejecting()).exchange_callback(callback)
     assert "secret must not leak" not in str(err.value)
+
+
+def test_desktop_client_secret_is_sent_only_to_token_endpoint():
+    request, callback = prepared()
+    opener = RecordingOpener()
+    exchange = SingleUseTokenExchange(
+        request, "test-client", opener=opener, client_secret="desktop-secret",
+    )
+    token = exchange.exchange_callback(callback)
+    assert token.scope == READONLY_SCOPE
+    body = parse_qs(opener.calls[0][0].data.decode())
+    assert body["client_secret"] == ["desktop-secret"]
+    assert "desktop-secret" not in request.authorization_url
