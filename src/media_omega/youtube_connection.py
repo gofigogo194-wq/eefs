@@ -5,7 +5,7 @@ caller after browser consent; secrets must not be logged or stored.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .youtube_oauth_readonly import prepare_readonly_authorization, prepare_upload_authorization
 from .youtube_oauth_exchange import SingleUseTokenExchange
@@ -20,6 +20,7 @@ class ChannelConnectionResult:
     authorized: bool
     mode: str = "READ_ONLY"
     published: bool = False
+    access_token: str = field(default="", repr=False, compare=False)
 
 
 class ReadOnlyConnectionSession:
@@ -53,7 +54,7 @@ class ReadOnlyConnectionSession:
         if checked.state is not UploadState.NOT_STARTED or checked.channel_id != self._expected:
             raise RuntimeError("channel verification failed: " + checked.reason)
         return ChannelConnectionResult(channel_id=checked.channel_id, authorized=True,
-                                       mode=self._mode)
+                                       mode=self._mode, access_token=token.access_token)
 
 
 class UploadConnectionSession(ReadOnlyConnectionSession):
