@@ -114,3 +114,14 @@ def test_upload_scoped_wrong_channel_and_scope_are_terminal():
             session.complete(callback)
         with pytest.raises(RuntimeError, match="consumed"):
             session.complete(callback)
+
+
+def test_channel_failure_surfaces_safe_stage_without_token():
+    session, callback, token, api = setup(channel="UC-wrong")
+    with pytest.raises(RuntimeError, match="AUTHENTICATED_CHANNEL_MISMATCH") as err:
+        session.complete(callback)
+    assert "secret" not in str(err.value)
+    session, callback, token, api = setup(api_fail=True)
+    with pytest.raises(RuntimeError, match="AUTHENTICATED_CHANNEL_READ_FAILED") as err:
+        session.complete(callback)
+    assert "secret" not in str(err.value)
