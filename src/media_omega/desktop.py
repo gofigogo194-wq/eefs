@@ -179,7 +179,21 @@ def main() -> int:
                 work.put((success, task(), None))
             except Exception as exc:
                 # Never print HTTP exception details: URLs can contain API credentials.
+                oauth_safe_errors = {
+                    "OAuth exchange failed or outcome uncertain",
+                    "invalid OAuth token response",
+                    "OAuth access token missing",
+                    "invalid token lifetime",
+                    "unexpected OAuth scopes",
+                    "OAuth token response too large",
+                    "OAuth code exchange already attempted",
+                    "channel verification failed: EXPECTED_CHANNEL_REQUIRED",
+                    "channel verification failed: AUTHENTICATED_CHANNEL_READ_FAILED",
+                    "channel verification failed: AUTHENTICATED_CHANNEL_MISMATCH",
+                }
                 if isinstance(exc, ValueError):
+                    message = str(exc)
+                elif isinstance(exc, RuntimeError) and str(exc) in oauth_safe_errors:
                     message = str(exc)
                 else:
                     message = "API or media operation failed (" + type(exc).__name__ + ")"
@@ -265,6 +279,7 @@ def main() -> int:
         oauth_session[0] = None
         def connected(result):
             status.set("Verified channel " + result.channel_id + " (upload scope). No upload performed.")
+            messagebox.showinfo("MEDIA Ω — YouTube", "YouTube channel verified. No upload performed.")
         run_task(lambda: session.complete(callback), connected)
 
     search_btn.configure(command=start_find)
