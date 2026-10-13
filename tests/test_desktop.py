@@ -82,3 +82,21 @@ def test_topic_results_use_real_line_breaks_not_literal_escape_sequences():
     assert "PT1H\nhttps://" in result
     assert "Rights: NOT VERIFIED" in result
     assert desktop.format_topic_results([]) == "No videos found"
+
+
+def test_desktop_main_creates_frame_before_using_it():
+    """Regression: literal backslash-n inside a comment hid frame assignment."""
+    import ast
+    import inspect
+    tree = ast.parse(inspect.getsource(desktop.main))
+    assignments = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "frame" for target in node.targets)
+    ]
+    assert len(assignments) == 1, "desktop GUI frame must be initialized"
+    first_frame_load = min(
+        node.lineno for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and node.id == "frame" and isinstance(node.ctx, ast.Load)
+    )
+    assert assignments[0].lineno < first_frame_load
