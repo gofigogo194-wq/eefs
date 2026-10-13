@@ -78,6 +78,7 @@ def main() -> int:
     count = tk.StringVar(value="10")
     api_key = tk.StringVar()
     oauth_client = tk.StringVar()
+    oauth_secret = tk.StringVar()
     channel_id = tk.StringVar()
     oauth_session = [None]
     topic = tk.StringVar(value="relaxing nature sounds")
@@ -134,6 +135,11 @@ def main() -> int:
     ttk.Entry(account_row, textvariable=oauth_client, width=32).pack(side="left", padx=5)
     ttk.Label(account_row, text="Expected channel ID").pack(side="left")
     ttk.Entry(account_row, textvariable=channel_id, width=22).pack(side="left", padx=5)
+    secret_row = ttk.Frame(account)
+    secret_row.pack(fill="x", pady=(4, 0))
+    ttk.Label(secret_row, text="Desktop client secret").pack(side="left")
+    ttk.Entry(secret_row, textvariable=oauth_secret, show="*", width=35).pack(side="left", padx=5)
+    ttk.Label(secret_row, text="Session only; not saved").pack(side="left")
     connect_btn = ttk.Button(account, text="1. Open Google authorization")
     connect_btn.pack(anchor="w", pady=(6, 0))
     finish_btn = ttk.Button(account, text="2. Verify browser callback URL")
@@ -257,7 +263,7 @@ def main() -> int:
         try:
             session = UploadConnectionSession(
                 oauth_client.get().strip(), "http://127.0.0.1:8765/",
-                channel_id.get().strip(),
+                channel_id.get().strip(), client_secret=oauth_secret.get(),
             )
             oauth_session[0] = session
             webbrowser.open(session.authorization_url)
