@@ -11,8 +11,7 @@ def verified_media(monkeypatch):
     from media_omega import media_probe
     monkeypatch.setattr(media_probe, "inspect_video", lambda path: (
         GateResult(Decision.ACCEPT, ("OK",)), {"audio_present": True}))
-    monkeypatch.setattr(media_probe, "decode_video", lambda path, timeout: (
-        GateResult(Decision.ACCEPT, ("OK",))))
+    monkeypatch.setattr(media_probe, "decode_video", lambda path, timeout: GateResult(Decision.ACCEPT, ("OK",)))
 
 
 class Reply:
