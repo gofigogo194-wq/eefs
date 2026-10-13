@@ -16,6 +16,7 @@ from threading import Thread
 from .ambient_renderer import render_ambient_loop
 from .youtube_api_readonly import YouTubeReadOnlyAPI
 from .youtube_connection import UploadConnectionSession
+from .youtube_private_upload import PrivateUpload
 
 
 def find_popular(region: str, count: int, api_key: str = "") -> list[dict]:
@@ -71,7 +72,7 @@ def main() -> int:
 
     root = tk.Tk()
     root.title("MEDIA Ω — Video Workshop")
-    root.geometry("920x840")
+    root.geometry("940x910")
     root.minsize(630, 510)
 
     region = tk.StringVar(value="TH")
@@ -81,6 +82,9 @@ def main() -> int:
     oauth_secret = tk.StringVar()
     channel_id = tk.StringVar()
     oauth_session = [None]
+    verified_account = [None]
+    upload_file = tk.StringVar()
+    upload_title = tk.StringVar(value="Relaxing Nature Sounds — Private Test")
     topic = tk.StringVar(value="relaxing nature sounds")
     freshness = tk.StringVar(value="Any")
     video = tk.StringVar()
@@ -168,6 +172,22 @@ def main() -> int:
     render_btn = ttk.Button(bottom, text="Create MP4")
     render_btn.pack(anchor="w", pady=(8, 0))
 
+    upload_area = ttk.LabelFrame(frame, text="3. First private YouTube upload (manual only, max 100 MiB)", padding=10)
+    upload_area.pack(fill="x", pady=(10, 0))
+    file_line = ttk.Frame(upload_area)
+    file_line.pack(fill="x")
+    ttk.Label(file_line, text="Verified MP4").pack(side="left")
+    ttk.Entry(file_line, textvariable=upload_file).pack(side="left", fill="x", expand=True, padx=6)
+    ttk.Button(file_line, text="Browse", command=lambda: upload_file.set(
+        filedialog.askopenfilename(title="Choose MP4 for private upload", filetypes=[("MP4", "*.mp4")])
+        or upload_file.get())).pack(side="left")
+    title_line = ttk.Frame(upload_area)
+    title_line.pack(fill="x", pady=(6, 0))
+    ttk.Label(title_line, text="Video title").pack(side="left")
+    ttk.Entry(title_line, textvariable=upload_title).pack(side="left", fill="x", expand=True, padx=6)
+    upload_btn = ttk.Button(upload_area, text="Upload PRIVATE once (no automatic retry)")
+    upload_btn.pack(anchor="w", pady=(6, 0))
+
     ttk.Label(frame, textvariable=status, wraplength=740).pack(anchor="w", pady=(12, 0))
     ttk.Label(frame, text="Local draft only. No upload or publication.", foreground="#666").pack(anchor="w")
 
@@ -178,6 +198,7 @@ def main() -> int:
         search_btn.configure(state="disabled")
         topic_btn.configure(state="disabled")
         render_btn.configure(state="disabled")
+        upload_btn.configure(state="disabled")
         status.set("Working...")
 
         def worker():
@@ -284,15 +305,45 @@ def main() -> int:
             return
         oauth_session[0] = None
         def connected(result):
+            verified_account[0] = result
             status.set("Verified channel " + result.channel_id + " (upload scope). No upload performed.")
             messagebox.showinfo("MEDIA Ω — YouTube", "YouTube channel verified. No upload performed.")
         run_task(lambda: session.complete(callback), connected)
+
+    def start_private_upload():
+        account = verified_account[0]
+        if account is None or not account.authorized or account.mode != "UPLOAD":
+            status.set("Connect and verify the YouTube channel first")
+            return
+        file_path = upload_file.get().strip()
+        title_value = upload_title.get().strip()
+        if not rights.get():
+            status.set("Confirm rights to BOTH original video and audio before upload")
+            return
+        if not messagebox.askyesno(
+            "MEDIA Ω — PRIVATE upload",
+            "Send ONE video to the verified channel as PRIVATE?\\n"
+            "An uncertain result blocks retries to avoid duplicates.\\n"
+            "No public publication will occur.",
+        ):
+            return
+        def upload_done(result):
+            status.set("PRIVATE upload response: " + result["video_id"] +
+                       "; readback pending, do not retry.")
+            messagebox.showinfo("MEDIA Ω", "Private upload response received. Verify the video in YouTube Studio.")
+        publisher = PrivateUpload(str(Path.home() / ".media_omega" / "upload_attempts"))
+        run_task(lambda: publisher.upload_once(
+            file_path, access_token=account.access_token, channel_id=account.channel_id,
+            title=title_value, rights_confirmed=bool(rights.get()),
+            preflight=lambda path: True,
+        ), upload_done)
 
     search_btn.configure(command=start_find)
     topic_btn.configure(command=start_topic)
     render_btn.configure(command=start_render)
     connect_btn.configure(command=start_google_connection)
     finish_btn.configure(command=finish_google_connection)
+    upload_btn.configure(command=start_private_upload)
 
     def poll():
         try:
@@ -304,6 +355,7 @@ def main() -> int:
             search_btn.configure(state="normal")
             topic_btn.configure(state="normal")
             render_btn.configure(state="normal")
+            upload_btn.configure(state="normal")
             if error:
                 status.set("Operation failed: " + error)
             else:
