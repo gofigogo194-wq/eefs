@@ -31,7 +31,7 @@ class ReadOnlyToken:
 class SingleUseTokenExchange:
     """One attempt per authorization request, even after remote uncertainty."""
 
-    def __init__(self, authorization: ReadOnlyOAuthRequest, client_id: str, *, opener=None):
+    def __init__(self, authorization: ReadOnlyOAuthRequest, client_id: str, *, opener=None, client_secret: str = ""):
         if not isinstance(authorization, ReadOnlyOAuthRequest):
             raise ValueError("OAuth authorization required")
         if not isinstance(client_id, str) or not client_id.strip():
@@ -39,7 +39,10 @@ class SingleUseTokenExchange:
         if authorization.scope not in (READONLY_SCOPE, UPLOAD_CONNECTION_SCOPE):
             raise ValueError("unsupported authorization scope")
         self.authorization = authorization
+        if not isinstance(client_secret, str):
+            raise ValueError("invalid OAuth client secret")
         self.client_id = client_id
+        self._client_secret = client_secret
         self.used = False
         self._opener = opener if opener is not None else build_opener(_RejectRedirect())
 
@@ -69,13 +72,16 @@ class SingleUseTokenExchange:
         code = params["code"][0]
         if not code or len(code) > 4096:
             raise ValueError("invalid OAuth authorization code")
-        body = urlencode({
+        parameters = {
             "client_id": self.client_id,
             "code": code,
             "code_verifier": self.authorization.code_verifier,
             "redirect_uri": self.authorization.redirect_uri,
             "grant_type": "authorization_code",
-        }).encode("ascii")
+        }
+        if self._client_secret:
+            parameters["client_secret"] = self._client_secret
+        body = urlencode(parameters).encode("ascii")
         request = Request(TOKEN_ENDPOINT, data=body, method="POST", headers={
             "Content-Type": "application/x-www-form-urlencoded",
             "Accept": "application/json",
