@@ -264,3 +264,58 @@ def test_changed_file_cannot_reconcile_another_upload(tmp_path):
         PrivateUpload(str(state), opener=verifier).reconcile_existing(
             str(media), access_token="fresh-token", channel_id=CHANNEL)
     assert not verifier.calls
+
+
+
+def test_put_network_interruption_does_not_retry_or_duplicate(tmp_path):
+    media = tmp_path / "clip.mp4"
+    media.write_bytes(b"licensed video")
+    state = tmp_path / "attempts"
+
+    class BrokenUpload(Opener):
+        def open(self, request, timeout):
+            if request.get_method() == "PUT":
+                self.calls.append(request)
+                raise TimeoutError("simulated loss while sending media")
+            return super().open(request, timeout)
+
+    transport = BrokenUpload()
+    with pytest.raises(RuntimeError, match="outcome unknown"):
+        upload(media, state, transport)
+    assert [r.get_method() for r in transport.calls] == ["GET", "POST", "PUT"]
+    assert marker(state)["state"] == "REMOTE_UNKNOWN"
+    with pytest.raises(RuntimeError, match="already attempted"):
+        upload(media, state, Opener())
+
+
+def test_expired_oauth_token_blocks_before_any_upload(tmp_path):
+    media = tmp_path / "clip.mp4"
+    media.write_bytes(b"licensed video")
+    state = tmp_path / "attempts"
+
+    class ExpiredToken(Opener):
+        def open(self, request, timeout):
+            if request.get_method() == "GET":
+                self.calls.append(request)
+                raise HTTPError(request.full_url, 401, "Unauthorized", {}, BytesIO())
+            return super().open(request, timeout)
+
+    transport = ExpiredToken()
+    with pytest.raises(RuntimeError, match="API request failed"):
+        upload(media, state, transport)
+    assert [r.get_method() for r in transport.calls] == ["GET"]
+    assert not state.exists()
+
+
+def test_failed_full_decode_blocks_before_channel_read(tmp_path, monkeypatch):
+    from media_omega import media_probe
+    media = tmp_path / "clip.mp4"
+    media.write_bytes(b"corrupted")
+    state = tmp_path / "attempts"
+    monkeypatch.setattr(media_probe, "decode_video", lambda path, timeout: (
+        GateResult(Decision.BLOCK, ("BAD_DECODE",))))
+    transport = Opener()
+    with pytest.raises(ValueError, match="full decode"):
+        upload(media, state, transport)
+    assert transport.calls == []
+    assert not state.exists()
