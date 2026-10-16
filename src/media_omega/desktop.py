@@ -455,6 +455,12 @@ def main() -> int:
         if account is None or not account.authorized or account.mode != "UPLOAD":
             status.set("Connect and verify the YouTube channel first")
             return
+        details = session_credentials[0]
+        if (channel_id.get().strip() != account.channel_id or details is None or
+                oauth_client.get().strip() != details["client_id"] or
+                oauth_secret.get().strip() != details["client_secret"]):
+            status.set("Google connection fields changed. Verify the channel again.")
+            return
         file_path = upload_file.get().strip()
         title_value = upload_title.get().strip()
         if not rights.get():
@@ -484,6 +490,12 @@ def main() -> int:
         account = verified_account[0]
         if account is None or not account.authorized or account.mode != "UPLOAD":
             status.set("Connect and verify the YouTube channel first")
+            return
+        details = session_credentials[0]
+        if (channel_id.get().strip() != account.channel_id or details is None or
+                oauth_client.get().strip() != details["client_id"] or
+                oauth_secret.get().strip() != details["client_secret"]):
+            status.set("Google connection fields changed. Verify the channel again.")
             return
         file_path = upload_file.get().strip()
         def checked(result):
