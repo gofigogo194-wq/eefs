@@ -1,7 +1,7 @@
 """Windows desktop: YouTube discovery, licensed MP4 creation and opt-in PRIVATE upload.
 
 Run: python -m media_omega.desktop
-No public publishing, downloading others' videos or persistent credentials.
+No public publishing or downloading others' videos. Secrets use Windows DPAPI.
 """
 from __future__ import annotations
 
@@ -9,14 +9,16 @@ import json
 import webbrowser
 import os
 import sys
+from time import time
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Thread
 
 from .ambient_renderer import render_ambient_loop
 from .youtube_api_readonly import YouTubeReadOnlyAPI
-from .youtube_connection import UploadConnectionSession
+from .youtube_connection import UploadConnectionSession, renew_saved_upload_connection
 from .youtube_private_upload import PrivateUpload
+from .windows_connection_store import WindowsConnectionStore
 
 
 def find_popular(region: str, count: int, api_key: str = "") -> list[dict]:
@@ -75,14 +77,26 @@ def main() -> int:
     root.geometry("940x910")
     root.minsize(630, 510)
 
+    # Stable Windows-user profile, never beside the EXE or in the ZIP.
+    store = None
+    saved = {}
+    saved_error = False
+    try:
+        store = WindowsConnectionStore()
+        saved = store.load() or {}
+    except RuntimeError:
+        saved_error = True
+
     region = tk.StringVar(value="TH")
     count = tk.StringVar(value="10")
-    api_key = tk.StringVar()
-    oauth_client = tk.StringVar()
-    oauth_secret = tk.StringVar()
-    channel_id = tk.StringVar()
+    api_key = tk.StringVar(value=saved.get("api_key", ""))
+    oauth_client = tk.StringVar(value=saved.get("client_id", ""))
+    oauth_secret = tk.StringVar(value=saved.get("client_secret", ""))
+    channel_id = tk.StringVar(value=saved.get("channel_id", ""))
     oauth_session = [None]
     verified_account = [None]
+    session_credentials = [None]
+    oauth_pending_credentials = [None]
     upload_file = tk.StringVar()
     upload_title = tk.StringVar(value="Relaxing Nature Sounds — Private Test")
     upload_description = tk.StringVar(value="Private pilot upload — RELAX SABAI MUSIK")
@@ -94,7 +108,14 @@ def main() -> int:
     duration = tk.StringVar(value="60")
     loop_seconds = tk.StringVar(value="5")
     rights = tk.BooleanVar(value=False)
-    status = tk.StringVar(value="Ready. PRIVATE upload is manual only.")
+    status = tk.StringVar(value=(
+        "Stored connection cannot be unlocked; old data has not been changed."
+        if saved_error else
+        "Saved Google settings loaded; verifying saved channel."
+        if saved.get("refresh_token") else
+        "Saved fields restored; Google reconnect needed."
+        if saved else "Ready. PRIVATE upload is manual only."
+    ))
     work: Queue = Queue()
     active = [False]
 
@@ -144,7 +165,11 @@ def main() -> int:
     secret_row.pack(fill="x", pady=(4, 0))
     ttk.Label(secret_row, text="Desktop client secret").pack(side="left")
     ttk.Entry(secret_row, textvariable=oauth_secret, show="*", width=35).pack(side="left", padx=5)
-    ttk.Label(secret_row, text="Session only; not saved").pack(side="left")
+    ttk.Label(secret_row, text="Encrypted in Windows when saved").pack(side="left")
+    save_btn = ttk.Button(account, text="Save connection settings")
+    save_btn.pack(anchor="w", pady=(4, 0))
+    forget_btn = ttk.Button(account, text="Disconnect and forget saved account")
+    forget_btn.pack(anchor="w", pady=(4, 0))
     connect_btn = ttk.Button(account, text="1. Open Google authorization")
     connect_btn.pack(anchor="w", pady=(6, 0))
     finish_btn = ttk.Button(account, text="2. Verify browser callback URL")
@@ -208,6 +233,8 @@ def main() -> int:
         render_btn.configure(state="disabled")
         upload_btn.configure(state="disabled")
         check_btn.configure(state="disabled")
+        save_btn.configure(state="disabled")
+        forget_btn.configure(state="disabled")
         status.set("Working...")
 
         def worker():
@@ -230,6 +257,11 @@ def main() -> int:
                     "YouTube upload outcome unknown; do not retry automatically",
                     "YouTube readback failed; do not retry upload",
                     "Private readback inconclusive; do not retry upload",
+                    "Stored Google connection requires reauthorization",
+                    "Saved YouTube channel verification failed",
+                    "Google refresh access token missing",
+                    "Google refresh scope does not match upload permission",
+                    "Google session expired; reconnect before upload",
                 }
                 if isinstance(exc, ValueError):
                     message = str(exc)
@@ -293,15 +325,63 @@ def main() -> int:
         args = (video.get(), audio.get(), output.get(), seconds, bool(rights.get()), loop)
         run_task(lambda: create_local_video(*args), show_render)
 
+    def current_settings(*, refresh_token=""):
+        return {
+            "client_id": oauth_client.get().strip(),
+            "client_secret": oauth_secret.get().strip(),
+            "channel_id": channel_id.get().strip(),
+            "api_key": api_key.get().strip(),
+            "refresh_token": refresh_token,
+        }
+
+    def save_current_settings():
+        if store is None:
+            status.set("Secure Windows storage is not available")
+            return
+        try:
+            old = store.load() or {}
+            fresh = current_settings()
+            # Never associate a refresh grant with edited client or channel identity.
+            if all(fresh[k] == old.get(k, "") for k in
+                   ("client_id", "client_secret", "channel_id")):
+                fresh["refresh_token"] = old.get("refresh_token", "")
+            store.save(fresh)
+            status.set("Google connection settings saved securely for future versions.")
+        except (RuntimeError, ValueError):
+            status.set("Could not securely save settings. Existing connection was not overwritten.")
+
+    def forget_connection():
+        if not messagebox.askyesno("MEDIA Ω — Disconnect",
+                                   "Forget saved local Google connection and API settings?"):
+            return
+        if store is None:
+            status.set("Secure Windows storage is not available")
+            return
+        try:
+            store.forget()
+        except OSError:
+            status.set("Could not remove the saved local connection")
+            return
+        verified_account[0] = None
+        session_credentials[0] = None
+        oauth_session[0] = None
+        oauth_pending_credentials[0] = None
+        for variable in (oauth_client, oauth_secret, channel_id, api_key):
+            variable.set("")
+        status.set("Disconnected locally. Google account permissions may still be granted.")
+
     def start_google_connection():
         try:
+            details = current_settings()
             session = UploadConnectionSession(
-                oauth_client.get().strip(), "http://127.0.0.1:8765/",
-                channel_id.get().strip(), client_secret=oauth_secret.get(),
+                details["client_id"], "http://127.0.0.1:8765/",
+                details["channel_id"], client_secret=details["client_secret"],
             )
+            oauth_pending_credentials[0] = details
             oauth_session[0] = session
+            verified_account[0] = None
             webbrowser.open(session.authorization_url)
-            status.set("Google opened. After consent copy browser callback URL and click Verify.")
+            status.set("Google opened. Authorize offline access, then paste callback and verify.")
         except (ValueError, RuntimeError):
             status.set("Google connection setup failed. Check client ID and channel ID.")
 
@@ -317,11 +397,51 @@ def main() -> int:
         if not callback:
             return
         oauth_session[0] = None
+        details = oauth_pending_credentials[0]
+        oauth_pending_credentials[0] = None
         def connected(result):
             verified_account[0] = result
-            status.set("Verified channel " + result.channel_id + " (upload scope). No upload performed.")
-            messagebox.showinfo("MEDIA Ω — YouTube", "YouTube channel verified. No upload performed.")
+            session_credentials[0] = details
+            persistence = "Connection is valid for this session only."
+            if store is not None:
+                try:
+                    previous = store.load() or {}
+                    # Some Google authorizations omit a new refresh token.
+                    # Reuse only a grant tied to the same client, secret and channel.
+                    refresh = result.refresh_token
+                    if not refresh and all(details[k] == previous.get(k, "") for k in
+                                           ("client_id", "client_secret", "channel_id")):
+                        refresh = previous.get("refresh_token", "")
+                    store.save({**details, "refresh_token": refresh})
+                    if refresh:
+                        persistence = "Saved securely; future restarts can reconnect automatically."
+                    else:
+                        persistence = "Settings saved; Google supplied no offline token, so reconnect later."
+                except (RuntimeError, ValueError):
+                    persistence = "Secure save failed; connection works only for this session."
+            status.set("Verified channel " + result.channel_id + ". " + persistence)
+            messagebox.showinfo("MEDIA Ω — YouTube", "YouTube channel verified.\n" + persistence)
         run_task(lambda: session.complete(callback), connected)
+
+    def fresh_upload_access_token():
+        account = verified_account[0]
+        creds = session_credentials[0]
+        if account is None or not account.authorized or account.mode != "UPLOAD":
+            raise RuntimeError("Google session expired; reconnect before upload")
+        if account.refresh_token:
+            if not creds or creds["channel_id"] != account.channel_id:
+                raise RuntimeError("Google session expired; reconnect before upload")
+            renewed = renew_saved_upload_connection(
+                creds["client_id"], creds["client_secret"], account.channel_id,
+                account.refresh_token,
+            )
+            if store is not None and renewed.refresh_token != account.refresh_token:
+                store.save({**creds, "refresh_token": renewed.refresh_token})
+            verified_account[0] = renewed
+            return renewed.access_token
+        if time() + 60 >= account.expires_at:
+            raise RuntimeError("Google session expired; reconnect before upload")
+        return account.access_token
 
     def start_private_upload():
         account = verified_account[0]
@@ -347,7 +467,7 @@ def main() -> int:
                                 result["url"])
         publisher = PrivateUpload(str(Path.home() / ".media_omega" / "upload_attempts"))
         run_task(lambda: publisher.upload_once(
-            file_path, access_token=account.access_token, channel_id=account.channel_id,
+            file_path, access_token=fresh_upload_access_token(), channel_id=account.channel_id,
             title=title_value, description=upload_description.get(),
             rights_confirmed=bool(rights.get()),
             preflight=lambda path: True,
@@ -368,13 +488,15 @@ def main() -> int:
                 messagebox.showwarning("MEDIA Ω — check only", result["reason"])
         verifier = PrivateUpload(str(Path.home() / ".media_omega" / "upload_attempts"))
         run_task(lambda: verifier.reconcile_existing(
-            file_path, access_token=account.access_token, channel_id=account.channel_id,
+            file_path, access_token=fresh_upload_access_token(), channel_id=account.channel_id,
         ), checked)
 
     search_btn.configure(command=start_find)
     topic_btn.configure(command=start_topic)
     render_btn.configure(command=start_render)
     connect_btn.configure(command=start_google_connection)
+    save_btn.configure(command=save_current_settings)
+    forget_btn.configure(command=forget_connection)
     finish_btn.configure(command=finish_google_connection)
     upload_btn.configure(command=start_private_upload)
     check_btn.configure(command=check_existing_private_upload)
@@ -391,6 +513,8 @@ def main() -> int:
             render_btn.configure(state="normal")
             upload_btn.configure(state="normal")
             check_btn.configure(state="normal")
+            save_btn.configure(state="normal")
+            forget_btn.configure(state="normal")
             if error:
                 status.set("Operation failed: " + error)
             else:
@@ -398,6 +522,25 @@ def main() -> int:
         root.after(150, poll)
 
     root.after(150, poll)
+
+    # No automatic remote write: refresh token and authenticated channel GET only.
+    if saved.get("refresh_token") and not saved_error:
+        def restored(result):
+            verified_account[0] = result
+            session_credentials[0] = saved
+            if store is not None and result.refresh_token != saved["refresh_token"]:
+                try:
+                    store.save({**saved, "refresh_token": result.refresh_token})
+                except (ValueError, RuntimeError):
+                    status.set("Channel verified, but rotated credentials could not be saved.")
+                    return
+            status.set("Saved YouTube channel verified: " + result.channel_id)
+        def restore_on_start():
+            run_task(lambda: renew_saved_upload_connection(
+                saved["client_id"], saved["client_secret"], saved["channel_id"],
+                saved["refresh_token"],
+            ), restored)
+        root.after(100, restore_on_start)
     root.mainloop()
     return 0
 
