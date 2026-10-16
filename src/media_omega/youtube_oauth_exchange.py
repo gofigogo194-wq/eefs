@@ -1,10 +1,10 @@
-"""Read-only OAuth callback/code exchange, with explicit single-use session.
+"""Single-use Google OAuth exchange and safe in-memory refresh.
 
-No listener, token disk storage, upload scope, or video mutation.
+No token persistence, media upload, or remote mutation except token exchange.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from urllib.parse import parse_qs, urlsplit, urlencode
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -23,9 +23,10 @@ class _RejectRedirect(HTTPRedirectHandler):
 
 @dataclass(frozen=True)
 class ReadOnlyToken:
-    access_token: str
-    expires_in: int
-    scope: str
+    access_token: str = field(repr=False)
+    expires_in: int = 0
+    scope: str = ""
+    refresh_token: str = field(default="", repr=False, compare=False)
 
 
 class SingleUseTokenExchange:
@@ -123,4 +124,53 @@ class SingleUseTokenExchange:
             raise RuntimeError("invalid token lifetime")
         if not isinstance(scopes, str) or set(scopes.split()) != set(self.authorization.scope.split()):
             raise RuntimeError("unexpected OAuth scopes")
-        return ReadOnlyToken(token, expires, scopes)
+        refresh = payload.get("refresh_token", "")
+        if not isinstance(refresh, str) or len(refresh) > 8192:
+            raise RuntimeError("invalid OAuth refresh token")
+        return ReadOnlyToken(token, expires, scopes, refresh_token=refresh)
+
+
+
+def refresh_upload_token(client_id: str, client_secret: str, refresh_token: str,
+                         *, opener=None) -> ReadOnlyToken:
+    """Refresh only the previously verified upload+read scope (no account write)."""
+    if not all(isinstance(value, str) and value.strip() for value in
+               (client_id, refresh_token)) or not isinstance(client_secret, str):
+        raise ValueError("saved upload credentials required")
+    body = {
+        "client_id": client_id,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }
+    if client_secret:
+        body["client_secret"] = client_secret
+    req = Request(TOKEN_ENDPOINT, data=urlencode(body).encode("utf-8"), method="POST",
+                  headers={"Content-Type": "application/x-www-form-urlencoded",
+                           "Accept": "application/json"})
+    transport = opener if opener is not None else build_opener(_RejectRedirect())
+    try:
+        with transport.open(req, timeout=15) as response:
+            raw = response.read(64 * 1024 + 1)
+            if len(raw) > 64 * 1024:
+                raise RuntimeError("Google refresh response too large")
+    except (HTTPError, URLError, TimeoutError, OSError):
+        raise RuntimeError("Stored Google connection requires reauthorization") from None
+    try:
+        data = json.loads(raw)
+    except (ValueError, UnicodeError):
+        raise RuntimeError("Invalid Google refresh response") from None
+    if not isinstance(data, dict):
+        raise RuntimeError("Invalid Google refresh response")
+    token = data.get("access_token")
+    lifetime = data.get("expires_in")
+    scope = data.get("scope", UPLOAD_CONNECTION_SCOPE)
+    rotated = data.get("refresh_token", "")
+    if not isinstance(token, str) or not token.strip():
+        raise RuntimeError("Google refresh access token missing")
+    if isinstance(lifetime, bool) or not isinstance(lifetime, int) or not 0 < lifetime <= 86400:
+        raise RuntimeError("Invalid Google refresh token lifetime")
+    if not isinstance(scope, str) or set(scope.split()) != set(UPLOAD_CONNECTION_SCOPE.split()):
+        raise RuntimeError("Google refresh scope does not match upload permission")
+    if not isinstance(rotated, str) or len(rotated) > 8192:
+        raise RuntimeError("Invalid Google rotated refresh token")
+    return ReadOnlyToken(token, lifetime, scope, refresh_token=rotated)
