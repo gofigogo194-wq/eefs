@@ -68,6 +68,10 @@ def _prepare_authorization(client_id: str, redirect_uri: str, scope: str) -> Rea
         "code_challenge_method": "S256",
         "state": state,
     }
+    # An explicit reconnect can issue a new offline refresh token for persistence.
+    # Applied to UPLOAD only; read-only auth keeps its previous behavior.
+    if scope == UPLOAD_CONNECTION_SCOPE:
+        params["prompt"] = "consent"
     return ReadOnlyOAuthRequest(AUTH_ENDPOINT + "?" + urlencode(params), state, verifier, redirect_uri, scope)
 
 
