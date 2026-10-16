@@ -6,6 +6,7 @@ No public publishing or downloading others' videos. Secrets use Windows DPAPI.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 import webbrowser
 import os
 import sys
@@ -346,6 +347,11 @@ def main() -> int:
                    ("client_id", "client_secret", "channel_id")):
                 fresh["refresh_token"] = old.get("refresh_token", "")
             store.save(fresh)
+            credentials = session_credentials[0]
+            if credentials and any(fresh[k] != credentials.get(k, "") for k in
+                                   ("client_id", "client_secret", "channel_id")):
+                verified_account[0] = None
+                session_credentials[0] = None
             status.set("Google connection settings saved securely for future versions.")
         except (RuntimeError, ValueError):
             status.set("Could not securely save settings. Existing connection was not overwritten.")
@@ -413,6 +419,7 @@ def main() -> int:
                                            ("client_id", "client_secret", "channel_id")):
                         refresh = previous.get("refresh_token", "")
                     store.save({**details, "refresh_token": refresh})
+                    verified_account[0] = replace(result, refresh_token=refresh)
                     if refresh:
                         persistence = "Saved securely; future restarts can reconnect automatically."
                     else:
