@@ -104,3 +104,32 @@ to a **new folder**. Run MEDIA_OMEGA.exe from that folder.
 This is not public or scheduled publishing. A successful CI package alone
 does not prove account-level acceptance: the first real PRIVATE test on the
 owner's Windows machine is the final gate before claiming upload support.
+
+
+## Remembered Google connection (Windows user only)
+
+From the next Candidate build, MEDIA Ω keeps OAuth Client ID, expected channel,
+Desktop Client Secret, API key and (when granted) Google offline refresh token
+in a **DPAPI-encrypted profile under**
+`%LOCALAPPDATA%\MEDIA_OMEGA\youtube_connection.v1.dpapi`.
+The profile belongs to the current Windows user account and is independent
+of any unzipped MEDIA_OMEGA.exe folder, so subsequent releases can restore it.
+
+On first use of this new version, authorize the existing Google Desktop OAuth
+client once again: prior builds discarded all tokens on exit and therefore
+cannot be retroactively migrated. The consent flow requests offline access.
+After channel verification MEDIA Ω saves the connection and, on subsequent
+launches, refreshes access and performs authenticated channel readback before
+showing that the account is connected. The token is refreshed and channel
+rechecked before every private upload; failed refresh blocks upload.
+
+Use **Save connection settings** to persist edited fields or the YouTube API
+key. Use **Disconnect and forget saved account** to erase all locally saved
+connections. Local removal does not revoke Google's existing authorization.
+
+Secrets and refresh tokens are neither plaintext in local files nor bundled
+with the EXE, GitHub repository or GitHub Actions logs. The password/profile
+protection is Windows-user scoped; it does not support moving credentials to
+a different computer or Windows login. If Google invalidates the refresh
+token (e.g. test-mode expiration or user revocation), MEDIA Ω asks for a
+fresh browser authorization, but does not erase the remembered settings.
