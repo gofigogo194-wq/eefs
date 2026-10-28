@@ -60,8 +60,8 @@ safe to re-use, nor a guarantee of early trends, viral prediction or downloads.
 To enable it, create a YouTube Data API v3 API key in your own Google Cloud
 project with the YouTube Data API v3 enabled. Restrict the key to this API;
 never put it in source code, a screenshot, a GitHub issue or a shared archive.
-Enter the key in the masked **YouTube API key** field. MEDIA Ω holds this key
-only in application memory for the current run; it is not persisted to files.
+Enter the key in the masked **YouTube API key** field. Use **Save connection
+settings** to persist it encrypted for the same Windows user across versions.
 The standard YouTube API key is transmitted as the documented HTTPS query
 parameter to Google's API. Avoid sharing diagnostic URLs containing credentials.
 
@@ -85,8 +85,12 @@ GitHub artifact ZIP and then extract its inner MEDIA_OMEGA_WINDOWS_CANDIDATE.zip
 to a **new folder**. Run MEDIA_OMEGA.exe from that folder.
 
 1. Use the existing Desktop OAuth Client ID and Client Secret, enter the
-   intended YouTube Channel ID, authorize, then verify the callback URL.
-   Tokens are never persisted.
+   intended YouTube Channel ID (starts with UC, 24 characters), and click
+   **Open Google authorization**. A dedicated local listener reserves a free
+   OS-assigned port and automatically receives Google's callback. Do NOT copy
+   or paste a localhost callback URL. Other local apps (including Gift Hunter
+   using 127.0.0.1:8765) may stay running. After successful channel readback,
+   the refresh token is saved with Windows-user DPAPI.
 2. Select a short licensed/original MP4 with audio **no larger than 100 MiB**.
    Set its title and description and confirm rights to both video and music.
 3. Confirm the one-shot **Upload PRIVATE** prompt. MEDIA Ω verifies the complete
@@ -96,7 +100,7 @@ to a **new folder**. Run MEDIA_OMEGA.exe from that folder.
 4. Only a confirmed PRIVATE response produces a video URL. An uncertain or
    interrupted attempt is locked; **do not press Upload again** to work
    around an error.
-5. Reconnect the same account and use **Check previous upload (read only)**
+5. Use the restored connection and **Check previous upload (read only)**
    to recheck a recorded video ID after a restart. It never performs an
    upload. If the remote ID is unknown or readback remains inconclusive,
    investigate the private uploads in YouTube Studio and do not reupload.
@@ -133,3 +137,25 @@ protection is Windows-user scoped; it does not support moving credentials to
 a different computer or Windows login. If Google invalidates the refresh
 token (e.g. test-mode expiration or user revocation), MEDIA Ω asks for a
 fresh browser authorization, but does not erase the remembered settings.
+
+## Google authorization loopback fix — Windows Candidate
+
+Earlier builds used a fixed redirect at `127.0.0.1:8765`. That port can belong
+to unrelated software, causing Google's OAuth callback to open the wrong app.
+The new Candidate starts a single-use HTTP receiver bound to `127.0.0.1`
+with port `0` (the OS reserves a currently available local port). It prepares
+PKCE OAuth using that exact port, checks the random `state`, accepts one
+callback, immediately exchanges the code and verifies the expected channel,
+and closes the local receiver. Unknown states/paths are rejected; no access
+logs contain the authorization code. After channel verification it preserves
+the existing DPAPI profile; already saved fields are loaded on startup.
+
+Press **Open Google authorization** once and approve the existing Desktop
+Google OAuth client. Google will display a simple local confirmation page,
+and MEDIA Ω will report `Verified channel ...` without manual URL copying.
+The **Cancel Google authorization** button cancels the pending listener.
+Expired attempts stop after 10 minutes; restart consent if needed.
+
+The receiver requires a desktop client in Google Cloud; it is not supported
+for redirect registrations limited to a specific fixed web URL. No public
+YouTube publishing or autonomous write is introduced by this fix.
