@@ -20,6 +20,7 @@ from .youtube_api_readonly import YouTubeReadOnlyAPI
 from .youtube_connection import UploadConnectionSession, renew_saved_upload_connection
 from .youtube_private_upload import PrivateUpload
 from .windows_connection_store import WindowsConnectionStore
+from .youtube_loopback import LoopbackOAuthReceiver
 
 
 def find_popular(region: str, count: int, api_key: str = "") -> list[dict]:
@@ -95,6 +96,8 @@ def main() -> int:
     oauth_secret = tk.StringVar(value=saved.get("client_secret", ""))
     channel_id = tk.StringVar(value=saved.get("channel_id", ""))
     oauth_session = [None]
+    oauth_listener = [None]
+    oauth_started_at = [0.0]
     verified_account = [None]
     session_credentials = [None]
     oauth_pending_credentials = [None]
@@ -141,7 +144,7 @@ def main() -> int:
     key_row.pack(fill="x", pady=(8, 0))
     ttk.Label(key_row, text="YouTube API key").pack(side="left")
     ttk.Entry(key_row, textvariable=api_key, show="*", width=46).pack(side="left", padx=6, fill="x", expand=True)
-    ttk.Label(key_row, text="Session only; not saved").pack(side="left")
+    ttk.Label(key_row, text="Saved with Windows encryption").pack(side="left")
     topic_row = ttk.Frame(top)
     topic_row.pack(fill="x", pady=(7, 0))
     ttk.Label(topic_row, text="Topic").pack(side="left")
@@ -173,7 +176,7 @@ def main() -> int:
     forget_btn.pack(anchor="w", pady=(4, 0))
     connect_btn = ttk.Button(account, text="1. Open Google authorization")
     connect_btn.pack(anchor="w", pady=(6, 0))
-    finish_btn = ttk.Button(account, text="2. Verify browser callback URL")
+    finish_btn = ttk.Button(account, text="Cancel Google authorization")
     finish_btn.pack(anchor="w", pady=(4, 0))
 
     bottom = ttk.LabelFrame(frame, text="2. Create local MP4 from licensed sources", padding=10)
@@ -376,35 +379,67 @@ def main() -> int:
             variable.set("")
         status.set("Disconnected locally. Google account permissions may still be granted.")
 
+    def cancel_google_connection(*, silent=False):
+        receiver = oauth_listener[0]
+        oauth_listener[0] = None
+        oauth_session[0] = None
+        oauth_pending_credentials[0] = None
+        oauth_started_at[0] = 0.0
+        if receiver is not None:
+            receiver.close()
+        if not silent:
+            status.set("Google authorization cancelled. Saved connection is untouched.")
+
     def start_google_connection():
+        if active[0]:
+            status.set("Finish current operation before connecting Google.")
+            return
+        cancel_google_connection(silent=True)
+        receiver = None
         try:
             details = current_settings()
+            if not details["client_id"].endswith(".apps.googleusercontent.com"):
+                raise ValueError("OAuth Client ID must end with .apps.googleusercontent.com")
+            if not (details["channel_id"].startswith("UC")
+                    and len(details["channel_id"]) == 24):
+                raise ValueError("Expected Channel ID must be a 24-character UC... channel identifier")
+            receiver = LoopbackOAuthReceiver()
             session = UploadConnectionSession(
-                details["client_id"], "http://127.0.0.1:8765/",
+                details["client_id"], receiver.redirect_uri,
                 details["channel_id"], client_secret=details["client_secret"],
             )
+            receiver.start(session.authorization.state)
             oauth_pending_credentials[0] = details
             oauth_session[0] = session
+            oauth_listener[0] = receiver
+            oauth_started_at[0] = time()
             verified_account[0] = None
-            webbrowser.open(session.authorization_url)
-            status.set("Google opened. Authorize offline access, then paste callback and verify.")
-        except (ValueError, RuntimeError):
-            status.set("Google connection setup failed. Check client ID and channel ID.")
+            if not webbrowser.open(session.authorization_url):
+                cancel_google_connection(silent=True)
+                status.set("Default browser did not open. Set a default browser and try again.")
+                return
+            status.set(
+                "Google opened. Authorize the correct channel; "
+                "MEDIA OMEGA receives the callback automatically on port " +
+                receiver.redirect_uri.split(":")[-1].strip("/")
+            )
+        except (OSError, ValueError, RuntimeError) as exc:
+            cancel_google_connection(silent=True)
+            if isinstance(exc, ValueError):
+                status.set(str(exc))
+            else:
+                status.set("Cannot start local Google authorization receiver. Try again.")
 
-    def finish_google_connection():
+    def finish_google_connection(callback: str):
         session = oauth_session[0]
-        if session is None:
-            status.set("First open Google authorization")
-            return
-        callback = simpledialog.askstring(
-            "YouTube OAuth", "Paste the full localhost callback URL from your browser:",
-            parent=root,
-        )
-        if not callback:
+        details = oauth_pending_credentials[0]
+        if session is None or details is None:
+            status.set("Google authorization session is no longer active")
             return
         oauth_session[0] = None
-        details = oauth_pending_credentials[0]
         oauth_pending_credentials[0] = None
+        oauth_started_at[0] = 0.0
+
         def connected(result):
             verified_account[0] = result
             session_credentials[0] = details
@@ -412,8 +447,7 @@ def main() -> int:
             if store is not None:
                 try:
                     previous = store.load() or {}
-                    # Some Google authorizations omit a new refresh token.
-                    # Reuse only a grant tied to the same client, secret and channel.
+                    # Reuse only a refresh grant bound to this exact client and channel.
                     refresh = result.refresh_token
                     if not refresh and all(details[k] == previous.get(k, "") for k in
                                            ("client_id", "client_secret", "channel_id")):
@@ -428,6 +462,7 @@ def main() -> int:
                     persistence = "Secure save failed; connection works only for this session."
             status.set("Verified channel " + result.channel_id + ". " + persistence)
             messagebox.showinfo("MEDIA Ω — YouTube", "YouTube channel verified.\n" + persistence)
+
         run_task(lambda: session.complete(callback), connected)
 
     def fresh_upload_access_token():
@@ -516,11 +551,22 @@ def main() -> int:
     connect_btn.configure(command=start_google_connection)
     save_btn.configure(command=save_current_settings)
     forget_btn.configure(command=forget_connection)
-    finish_btn.configure(command=finish_google_connection)
+    finish_btn.configure(command=cancel_google_connection)
     upload_btn.configure(command=start_private_upload)
     check_btn.configure(command=check_existing_private_upload)
 
     def poll():
+        receiver = oauth_listener[0]
+        if receiver is not None:
+            if time() - oauth_started_at[0] > 600:
+                cancel_google_connection(silent=True)
+                status.set("Google authorization timed out. Click Open Google authorization again.")
+            elif not active[0]:
+                callback_url = receiver.take_callback()
+                if callback_url is not None:
+                    oauth_listener[0] = None
+                    receiver.close()
+                    finish_google_connection(callback_url)
         try:
             callback, data, error = work.get_nowait()
         except Empty:
@@ -541,6 +587,12 @@ def main() -> int:
         root.after(150, poll)
 
     root.after(150, poll)
+
+    def close_application():
+        cancel_google_connection(silent=True)
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", close_application)
 
     # No automatic remote write: refresh token and authenticated channel GET only.
     if saved.get("refresh_token") and not saved_error:
