@@ -1,0 +1,102 @@
+import pytest
+
+from media_omega import desktop
+
+
+def test_find_popular_uses_readonly_env_token(monkeypatch):
+    class FakeAPI:
+        def __init__(self, access_token, *, api_key=""):
+            assert access_token == "token"
+            assert api_key == ""
+        def get_popular_videos(self, *, region_code, max_results):
+            assert (region_code, max_results) == ("TH", 10)
+            return [{"title": "Top", "reuse_permission": "NOT_VERIFIED"}]
+    monkeypatch.setenv("MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN", "token")
+    monkeypatch.setattr(desktop, "YouTubeReadOnlyAPI", FakeAPI)
+    assert desktop.find_popular("TH", 10)[0]["title"] == "Top"
+
+
+def test_find_popular_requires_token(monkeypatch):
+    monkeypatch.delenv("MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN", raising=False)
+    with pytest.raises(ValueError, match="API key"):
+        desktop.find_popular("TH", 10)
+
+
+def test_render_blocked_without_rights(monkeypatch):
+    calls = []
+    monkeypatch.setattr(desktop, "render_ambient_loop", lambda *a, **kw: calls.append(1))
+    with pytest.raises(ValueError, match="rights"):
+        desktop.create_local_video("in.mp4", "audio.mp3", "out.mp4", 60, False)
+    assert calls == []
+
+
+def test_render_calls_existing_engine_with_safe_options(monkeypatch):
+    def fake_render(video, audio, output, **options):
+        assert (video, audio, output) == ("mine.mp4", "mine.mp3", "done.mp4")
+        assert options == {"duration_seconds": 60,
+                           "video_crossfade_seconds": 0.7,
+                           "video_loop_segment_seconds": 5.0,
+                           "audio_crossfade_seconds": 0.15}
+        return output
+    monkeypatch.setattr(desktop, "render_ambient_loop", fake_render)
+    assert desktop.create_local_video("mine.mp4", "mine.mp3", "done.mp4", 60, True) == "done.mp4"
+
+
+def test_find_popular_api_key_from_desktop(monkeypatch):
+    monkeypatch.delenv("MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN", raising=False)
+    monkeypatch.delenv("MEDIA_OMEGA_YOUTUBE_API_KEY", raising=False)
+    class FakeAPI:
+        def __init__(self, access_token, *, api_key):
+            assert access_token == ""
+            assert api_key == "session-key"
+        def get_popular_videos(self, *, region_code, max_results):
+            assert (region_code, max_results) == ("TH", 10)
+            return [{"title": "Music", "url": "https://www.youtube.com/watch?v=test", "views": 100}]
+    monkeypatch.setattr(desktop, "YouTubeReadOnlyAPI", FakeAPI)
+    assert desktop.find_popular("TH", 10, "session-key")[0]["title"] == "Music"
+
+
+def test_find_topic_uses_session_api_key(monkeypatch):
+    monkeypatch.delenv("MEDIA_OMEGA_YOUTUBE_READONLY_TOKEN", raising=False)
+    monkeypatch.delenv("MEDIA_OMEGA_YOUTUBE_API_KEY", raising=False)
+    class FakeAPI:
+        def __init__(self, token, *, api_key):
+            assert token == ""
+            assert api_key == "test-key"
+        def search_topic_videos(self, query, *, region_code, max_results, recent_days):
+            assert (query, region_code, max_results, recent_days) == ("fireplace", "TH", 10, 30)
+            return [{"title": "Fireplace"}]
+    monkeypatch.setattr(desktop, "YouTubeReadOnlyAPI", FakeAPI)
+    assert desktop.find_topic("fireplace", "TH", 10, "test-key", 30)[0]["title"] == "Fireplace"
+
+
+def test_topic_results_use_real_line_breaks_not_literal_escape_sequences():
+    rows = [{
+        "title": "Relaxing waterfall", "views": 123,
+        "channel_title": "Nature", "published_at": "2026-01-01T00:00:00Z",
+        "duration_iso": "PT1H", "url": "https://www.youtube.com/watch?v=abc",
+    }]
+    result = desktop.format_topic_results(rows)
+    assert "\\n" not in result
+    assert "123 views\nChannel: Nature" in result
+    assert "PT1H\nhttps://" in result
+    assert "Rights: NOT VERIFIED" in result
+    assert desktop.format_topic_results([]) == "No videos found"
+
+
+def test_desktop_main_creates_frame_before_using_it():
+    """Regression: literal backslash-n inside a comment hid frame assignment."""
+    import ast
+    import inspect
+    tree = ast.parse(inspect.getsource(desktop.main))
+    assignments = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "frame" for target in node.targets)
+    ]
+    assert len(assignments) == 1, "desktop GUI frame must be initialized"
+    first_frame_load = min(
+        node.lineno for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and node.id == "frame" and isinstance(node.ctx, ast.Load)
+    )
+    assert assignments[0].lineno < first_frame_load

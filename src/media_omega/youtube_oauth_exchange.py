@@ -1,0 +1,176 @@
+"""Single-use Google OAuth exchange and safe in-memory refresh.
+
+No token persistence, media upload, or remote mutation except token exchange.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+import json
+from urllib.parse import parse_qs, urlsplit, urlencode
+from urllib.request import Request, build_opener, HTTPRedirectHandler
+from urllib.error import HTTPError, URLError
+
+from .youtube_oauth_readonly import ReadOnlyOAuthRequest, READONLY_SCOPE, UPLOAD_CONNECTION_SCOPE, validate_callback_state
+
+
+TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+
+
+class _RejectRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+@dataclass(frozen=True)
+class ReadOnlyToken:
+    access_token: str = field(repr=False)
+    expires_in: int = 0
+    scope: str = ""
+    refresh_token: str = field(default="", repr=False, compare=False)
+
+
+class SingleUseTokenExchange:
+    """One attempt per authorization request, even after remote uncertainty."""
+
+    def __init__(self, authorization: ReadOnlyOAuthRequest, client_id: str, *, opener=None, client_secret: str = ""):
+        if not isinstance(authorization, ReadOnlyOAuthRequest):
+            raise ValueError("OAuth authorization required")
+        if not isinstance(client_id, str) or not client_id.strip():
+            raise ValueError("OAuth client ID required")
+        if authorization.scope not in (READONLY_SCOPE, UPLOAD_CONNECTION_SCOPE):
+            raise ValueError("unsupported authorization scope")
+        self.authorization = authorization
+        if not isinstance(client_secret, str):
+            raise ValueError("invalid OAuth client secret")
+        self.client_id = client_id
+        self._client_secret = client_secret
+        self.used = False
+        self._opener = opener if opener is not None else build_opener(_RejectRedirect())
+
+    def exchange_callback(self, callback_url: str) -> ReadOnlyToken:
+        if self.used:
+            raise RuntimeError("OAuth code exchange already attempted")
+        # Mark consumed BEFORE any network request to prohibit retry after
+        # uncertain transport outcomes.
+        self.used = True
+        if not isinstance(callback_url, str):
+            raise ValueError("callback URL required")
+        callback = urlsplit(callback_url)
+        original = urlsplit(self.authorization.redirect_uri)
+        if (callback.scheme, callback.hostname, callback.port, callback.path) != (
+            original.scheme, original.hostname, original.port, original.path
+        ) or callback.fragment or callback.username or callback.password:
+            raise ValueError("OAuth callback origin mismatch")
+        params = parse_qs(callback.query, keep_blank_values=True)
+        if not {"code", "state"} <= set(params) or not set(params) <= {"code", "state", "iss", "scope"} or any(len(v) != 1 for v in params.values()):
+            raise ValueError("invalid OAuth callback parameters")
+        if "iss" in params and params["iss"][0] not in ("https://accounts.google.com", "accounts.google.com"):
+            raise ValueError("OAuth issuer mismatch")
+        if "scope" in params and set(params["scope"][0].split()) != set(self.authorization.scope.split()):
+            raise ValueError("OAuth callback scope mismatch")
+        if not validate_callback_state(self.authorization.state, params["state"][0]):
+            raise ValueError("OAuth state mismatch")
+        code = params["code"][0]
+        if not code or len(code) > 4096:
+            raise ValueError("invalid OAuth authorization code")
+        parameters = {
+            "client_id": self.client_id,
+            "code": code,
+            "code_verifier": self.authorization.code_verifier,
+            "redirect_uri": self.authorization.redirect_uri,
+            "grant_type": "authorization_code",
+        }
+        if self._client_secret:
+            parameters["client_secret"] = self._client_secret
+        body = urlencode(parameters).encode("ascii")
+        request = Request(TOKEN_ENDPOINT, data=body, method="POST", headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+        })
+        try:
+            with self._opener.open(request, timeout=10) as response:
+                raw = response.read(64 * 1024 + 1)
+                if len(raw) > 64 * 1024:
+                    raise RuntimeError("OAuth token response too large")
+        except HTTPError as exc:
+            # Never expose Google's raw body: it may carry sensitive context.
+            reason = "UNKNOWN"
+            try:
+                raw_error = exc.read(8192)
+                response_error = json.loads(raw_error)
+                candidate = response_error.get("error") if isinstance(response_error, dict) else None
+                if candidate in {
+                    "invalid_client", "invalid_grant", "invalid_request",
+                    "unauthorized_client", "access_denied", "unsupported_grant_type",
+                }:
+                    reason = candidate.upper()
+            except (ValueError, OSError, UnicodeError):
+                pass
+            raise RuntimeError(f"Google token exchange rejected: HTTP {exc.code} / {reason}") from None
+        except (URLError, OSError, TimeoutError):
+            raise RuntimeError("Google token endpoint unreachable or timed out") from None
+        try:
+            payload = json.loads(raw)
+        except (ValueError, UnicodeError):
+            raise RuntimeError("invalid OAuth token response") from None
+        if not isinstance(payload, dict):
+            raise RuntimeError("invalid OAuth token response")
+        token, expires, scopes = (
+            payload.get("access_token"), payload.get("expires_in"), payload.get("scope")
+        )
+        if not isinstance(token, str) or not token.strip():
+            raise RuntimeError("OAuth access token missing")
+        if isinstance(expires, bool) or not isinstance(expires, int) or not 0 < expires <= 86400:
+            raise RuntimeError("invalid token lifetime")
+        if not isinstance(scopes, str) or set(scopes.split()) != set(self.authorization.scope.split()):
+            raise RuntimeError("unexpected OAuth scopes")
+        refresh = payload.get("refresh_token", "")
+        if not isinstance(refresh, str) or len(refresh) > 8192:
+            raise RuntimeError("invalid OAuth refresh token")
+        return ReadOnlyToken(token, expires, scopes, refresh_token=refresh)
+
+
+
+def refresh_upload_token(client_id: str, client_secret: str, refresh_token: str,
+                         *, opener=None) -> ReadOnlyToken:
+    """Refresh only the previously verified upload+read scope (no account write)."""
+    if not all(isinstance(value, str) and value.strip() for value in
+               (client_id, refresh_token)) or not isinstance(client_secret, str):
+        raise ValueError("saved upload credentials required")
+    body = {
+        "client_id": client_id,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }
+    if client_secret:
+        body["client_secret"] = client_secret
+    req = Request(TOKEN_ENDPOINT, data=urlencode(body).encode("utf-8"), method="POST",
+                  headers={"Content-Type": "application/x-www-form-urlencoded",
+                           "Accept": "application/json"})
+    transport = opener if opener is not None else build_opener(_RejectRedirect())
+    try:
+        with transport.open(req, timeout=15) as response:
+            raw = response.read(64 * 1024 + 1)
+            if len(raw) > 64 * 1024:
+                raise RuntimeError("Google refresh response too large")
+    except (HTTPError, URLError, TimeoutError, OSError):
+        raise RuntimeError("Stored Google connection requires reauthorization") from None
+    try:
+        data = json.loads(raw)
+    except (ValueError, UnicodeError):
+        raise RuntimeError("Invalid Google refresh response") from None
+    if not isinstance(data, dict):
+        raise RuntimeError("Invalid Google refresh response")
+    token = data.get("access_token")
+    lifetime = data.get("expires_in")
+    scope = data.get("scope", UPLOAD_CONNECTION_SCOPE)
+    rotated = data.get("refresh_token", "")
+    if not isinstance(token, str) or not token.strip():
+        raise RuntimeError("Google refresh access token missing")
+    if isinstance(lifetime, bool) or not isinstance(lifetime, int) or not 0 < lifetime <= 86400:
+        raise RuntimeError("Invalid Google refresh token lifetime")
+    if not isinstance(scope, str) or set(scope.split()) != set(UPLOAD_CONNECTION_SCOPE.split()):
+        raise RuntimeError("Google refresh scope does not match upload permission")
+    if not isinstance(rotated, str) or len(rotated) > 8192:
+        raise RuntimeError("Invalid Google rotated refresh token")
+    return ReadOnlyToken(token, lifetime, scope, refresh_token=rotated)
